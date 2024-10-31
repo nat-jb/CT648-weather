@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend  # ที่อยู่โฟลเดอร์ที่เก็บ Dockerfile ของ frontend
+    ports:
+      - "5173:5173"  # ใช้พอร์ต 5173 สำหรับ frontend
+
+  backend:
+    build:
+      context: ./backend  # ที่อยู่โฟลเดอร์ที่เก็บ Dockerfile ของ backend
+    ports:
+      - "5002:5002"  # ใช้พอร์ต 5002 สำหรับ backend
+    environment:
+      - DATABASE_URL=postgresql://weather:weather@db:5432/Weather  # URL สำหรับเชื่อมต่อ PostgreSQL
+
+  node_server:  # เพิ่ม Node.js server
+    build:
+      context: ./node_server  # ที่อยู่โฟลเดอร์ที่เก็บ Dockerfile ของ Node.js
+    ports:
+      - "5001:5001"  # ใช้พอร์ต 5001 สำหรับ Node.js server
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: weather
+      POSTGRES_PASSWORD: weather
+      POSTGRES_DB: Weather
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql  # รัน init.sql เมื่อ container เริ่มต้น
+
+volumes:
+  db_data:

@@ -1,0 +1,3212 @@
+Invoke-WebRequest -Uri "http://localhost:5000/api/weather" -Method POST -ContentType "application/json" -Body '{"location": "Bangkok"}'
+
+
+
+bun run server.js
+
+
+Gusts: ความเร็วของลมในช่วงลมกระโชก (gusts)
+Condition: สภาพอากาศในปัจจุบัน เช่น ฝนตก, แดดออก, เมฆมาก
+Cloud Cover: ปริมาณเมฆ (cloud cover) โดยเป็นเปอร์เซ็นต์
+UV Index: ดัชนี UV ที่แสดงถึงระดับความเข้มของรังสี UV
+
+
+CREATE TABLE weather (
+    id SERIAL PRIMARY KEY,
+    province  VARCHAR(255) NOT NULL,
+    district  VARCHAR(255) NOT NULL, 
+    temperature FLOAT NOT NULL,
+    humidity FLOAT NOT NULL,
+    wind_speed FLOAT NOT NULL,
+    gusts FLOAT,
+    condition TEXT,
+    cloud_cover FLOAT,
+    uv_index FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+
+
+##########ก่อนปรับเป็นทุกจังหวัด อำเภอ
+// server.js
+import express from 'express';
+import { Pool } from 'pg';
+import cors from 'cors';
+import fetch from 'node-fetch'; // ต้องติดตั้ง node-fetch
+
+const app = express();
+const port = 5000;   
+const API_KEY = '0d33acf579c643da933101854242010'; // API Key สำหรับ WeatherAPI.com
+const CHECK_INTERVAL = 60000; // ตรวจสอบทุก 60 วินาที
+
+// รายชื่อจังหวัดในประเทศไทย
+const locations = [
+  'Bangkok', 'Amnat Charoen', 'Ang Thong', 'Bueng Kan', 'Buriram',
+  'Chachoengsao', 'Chai Nat', 'Chaiyaphum', 'Chanthaburi', 'Chiang Mai',
+  'Chiang Rai', 'Chonburi', 'Chumphon', 'Kalasin', 'Kamphaeng Phet',
+  'Kanchanaburi', 'Khon Kaen', 'Krabi', 'Lampang', 'Lamphun',
+  'Loei', 'Lopburi', 'Mae Hong Son', 'Maha Sarakham', 'Mukdahan',
+  'Nakhon Nayok', 'Nakhon Pathom', 'Nakhon Phanom', 'Nakhon Ratchasima',
+  'Nakhon Sawan', 'Nakhon Si Thammarat', 'Nan', 'Narathiwat', 'Nong Bua Lam Phu',
+  'Nong Khai', 'Nonthaburi', 'Pathum Thani', 'Pattani', 'Phang Nga',
+  'Phatthalung', 'Phayao', 'Phetchabun', 'Phetchaburi', 'Phichit',
+  'Phitsanulok', 'Phrae', 'Phuket', 'Prachinburi', 'Prachuap Khiri Khan',
+  'Ranong', 'Ratchaburi', 'Rayong', 'Roi Et', 'Sa Kaeo', 'Sakon Nakhon',
+  'Samut Prakan', 'Samut Sakhon', 'Samut Songkhram', 'Saraburi', 'Satun',
+  'Sing Buri', 'Sisaket', 'Songkhla', 'Sukhothai', 'Suphan Buri',
+  'Surat Thani', 'Surin', 'Tak', 'Trang', 'Trat', 'Ubon Ratchathani',
+  'Udon Thani', 'Uthai Thani', 'Uttaradit', 'Yala', 'Yasothon'
+];
+
+// ตั้งค่า CORS
+app.use(cors());
+app.use(express.json());
+
+// ตั้งค่าการเชื่อมต่อ PostgreSQL
+const pool = new Pool({
+  user: 'weather',
+  host: 'localhost',
+  database: 'Weather',
+  password: 'weather',
+  port: 5432,
+});
+
+// ฟังก์ชันเพื่อตรวจสอบการเชื่อมต่อ PostgreSQL
+const checkConnection = async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('Connected to PostgreSQL:', res.rows[0]);
+    return true;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    return false;
+  }
+};
+
+// ฟังก์ชันเพื่อตรวจสอบและจัดเก็บข้อมูลสภาพอากาศ
+const fetchAndStoreWeatherData = async () => {
+    for (const LOCATION of locations) {
+      try {
+        // ดึงข้อมูลจาก WeatherAPI.com
+        const response = await fetch(`http://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${LOCATION}`);
+        const weatherData = await response.json();
+  
+        // เช็คว่ามีข้อมูลหรือไม่
+        if (response.ok) {
+          const { location: loc, current } = weatherData;
+          const { temp_c, humidity, wind_kph, gust_kph, condition, cloud, uv } = current;
+  
+          // ตรวจสอบข้อมูลในฐานข้อมูล
+          const query = 'SELECT * FROM weather WHERE location = $1 ORDER BY created_at DESC LIMIT 1';
+          const result = await pool.query(query, [loc.name]);
+  
+          // เช็คว่ามีข้อมูลล่าสุดหรือไม่
+          if (result.rows.length > 0) {
+            const latestData = result.rows[0];
+            // เปรียบเทียบข้อมูลใหม่กับข้อมูลล่าสุดในฐานข้อมูล
+            if (
+              latestData.temperature === temp_c &&
+              latestData.humidity === humidity &&
+              latestData.wind_speed === wind_kph &&
+              latestData.gusts === gust_kph &&
+              latestData.condition === condition.text &&
+              latestData.cloud_cover === cloud &&
+              latestData.uv_index === uv
+            ) {
+              console.log(`No changes in weather data for ${loc.name}. Skipping insert.`);
+              continue; // ข้ามไปยังจังหวัดถัดไป
+            }
+          }
+  
+          // ถ้าข้อมูลมีการเปลี่ยนแปลง ให้ทำการบันทึกข้อมูลใหม่
+          const insertQuery = `
+            INSERT INTO weather (location, temperature, humidity, wind_speed, gusts, condition, cloud_cover, uv_index, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *`;
+          const values = [loc.name, temp_c, humidity, wind_kph, gust_kph, condition.text, cloud, uv];
+          await pool.query(insertQuery, values);
+          
+          console.log('Weather data inserted successfully:', { 
+            location: loc.name, 
+            temperature: temp_c, 
+            humidity, 
+            wind_speed: wind_kph,
+            gusts: gust_kph,
+            condition: condition.text,
+            cloud_cover: cloud,
+            uv_index: uv
+          });
+        } else {
+          console.error('Error fetching weather data for', LOCATION, ':', weatherData);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    }
+  };
+  
+
+
+
+// เส้นทางหลัก
+app.get('/', (req, res) => {
+  res.send('Weather API Server is running');
+});
+
+// เริ่มต้นเซิร์ฟเวอร์
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+
+  // เรียกใช้งานฟังก์ชันตรวจสอบข้อมูลทุกๆ 60 วินาที
+  setInterval(fetchAndStoreWeatherData, CHECK_INTERVAL);
+});
+########
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+####แยกเก็บจังหวัดอำเภอแล้ว แต่ใน db ยังไม่แยก
+// server.js
+import express from 'express';
+import { Pool } from 'pg';
+import cors from 'cors';
+import fetch from 'node-fetch'; // ต้องติดตั้ง node-fetch
+
+const app = express();
+const port = 5000;   
+const API_KEY = '0d33acf579c643da933101854242010'; // API Key สำหรับ WeatherAPI.com
+const CHECK_INTERVAL = 60000; // ตรวจสอบทุก 60 วินาที
+
+// รายชื่อจังหวัดในประเทศไทย
+const locations = {
+  'Bangkok': [
+    'Khan Na Yao',
+    'Bang Khen',
+    'Dusit',
+    'Nakhon Chai Si',
+    'Prawet',
+    'Suan Luang',
+    'Sathon',
+    'Khlong Toei',
+    'Bang Na',
+    'Wang Thonglang',
+    'Lat Phrao',
+    'Chatuchak',
+    'Bang Sue',
+    'Phaya Thai',
+    'Ratchathewi',
+    'Pathum Wan',
+    'Nana',
+    'Bang Phlat',
+    'Dusit',
+    'Samsen Nai',
+    'Khet Chom Thong',
+    'Bang Phlat'
+  ],
+  'Amnat Charoen': [
+    'Mueang Amnat Charoen',
+    'Chanuman',
+    'Phana',
+    'Lue Amnat',
+    'Samrong'
+  ],
+  'Ang Thong': [
+    'Mueang Ang Thong',
+    'Chaiyo',
+    'Sawaeng Ha',
+    'Pa Mok',
+    'Nong Saeng',
+    'Wiset Chai Chan'
+  ],
+  'Bueng Kan': [
+    'Mueang Bueng Kan',
+    'Bung Khla',
+    'So Phisai',
+    'Phon Charoen',
+    'Tao Ngoi',
+    'Si Wilai'
+  ],
+  'Buriram': [
+    'Mueang Buriram',
+    'Khaen Dong',
+    'Lam Plai Mat',
+    'Nang Rong',
+    'Chaloem Phra Kiat',
+    'Sangkhla Buri',
+    'Buriram',
+    'Non Daeng',
+    'Prakhon Chai',
+    'Satuk'
+  ],
+  'Chachoengsao': [
+    'Mueang Chachoengsao',
+    'Bang Khla',
+    'Phanom Sarakham',
+    'Khlong Khuean',
+    'Ban Pho',
+    'Sathon',
+    'Sanam Chai Khet'
+  ],
+  'Chai Nat': [
+    'Mueang Chai Nat',
+    'Chai Badan',
+    'Sappaya',
+    'Huang Sam Mo',
+    'Noen Kham',
+    'Phrom Buri'
+  ],
+  'Chaiyaphum': [
+    'Mueang Chaiyaphum',
+    'Chatturat',
+    'Phu Khiao',
+    'Thep Sathit',
+    'Bamboo',
+    'Ban Khwao',
+    'Nong Bua Daeng'
+  ],
+  'Chanthaburi': [
+    'Mueang Chanthaburi',
+    'Laem Sing',
+    'Khao Khitchakut',
+    'Pong Nam Ron',
+    'Nong Sakae',
+    'Makham'
+  ],
+  'Chiang Mai': [
+    'Mueang Chiang Mai',
+    'Hang Dong',
+    'San Kamphaeng',
+    'Doi Saket',
+    'Mae Rim',
+    'Chiang Dao',
+    'Fang',
+    'Payap',
+    'Doi Tao',
+    'Om Koi',
+    'Chai Prakan',
+    'Hot',
+    'Phrao',
+    'San Sai',
+    'Saraphi',
+    'Suthep'
+  ],
+  'Chiang Rai': [
+    'Mueang Chiang Rai',
+    'Chiang Khong',
+    'Doi Luang',
+    'Doi Saket',
+    'Mae Fah Luang',
+    'Mae Chan',
+    'Mae Sai',
+    'Phaya Mengrai',
+    'Wiang Chiang Rung'
+  ],
+  'Chonburi': [
+    'Mueang Chonburi',
+    'Bang Saen',
+    'Sattahip',
+    'Pattaya',
+    'Nong Nooch',
+    'Bang Lamung',
+    'Sri Racha',
+    'Bo Thong'
+  ],
+  'Chumphon': [
+    'Mueang Chumphon',
+    'Thung Tako',
+    'Lang Suan',
+    'Sukhothai',
+    'Chum Kho',
+    'Pathio',
+    'Pha Thale',
+    'Wang Thong'
+  ],
+  'Kalasin': [
+    'Mueang Kalasin',
+    'Kamalasai',
+    'Kuchinarai',
+    'Khong Chai',
+    'Sikhottabong',
+    'Yang Talat'
+  ],
+  'Kamphaeng Phet': [
+    'Mueang Kamphaeng Phet',
+    'Khlong Lan',
+    'Phranakhon Si Ayutthaya',
+    'Khanu Woralaksaburi',
+    'Suwannakhuha'
+  ],
+  'Kanchanaburi': [
+    'Mueang Kanchanaburi',
+    'Sai Yok',
+    'Thamaka',
+    'Erawan',
+    'Dan Makham Tia',
+    'Sangkhla Buri',
+    'Huai Krachao'
+  ],
+  'Khon Kaen': [
+    'Mueang Khon Kaen',
+    'Nong Rua',
+    'Chonnabot',
+    'Khon Kaen',
+    'Nong Song Hong',
+    'Phu Wiang'
+  ],
+  'Krabi': [
+    'Mueang Krabi',
+    'Ao Luek',
+    'Klong Thom',
+    'Koh Lanta',
+    'Nong Thale',
+    'Poda'
+  ],
+  'Lampang': [
+    'Mueang Lampang',
+    'Ko Kha',
+    'Mae Tha',
+    'Thoen',
+    'Hang Chat'
+  ],
+  'Lamphun': [
+    'Mueang Lamphun',
+    'Thung Hua Chang',
+    'Pa Sang',
+    'Li',
+    'Chae Hom'
+  ],
+  'Loei': [
+    'Mueang Loei',
+    'Phu Ruea',
+    'Na Haeo',
+    'Dan Sai',
+    'Wang Saphung'
+  ],
+  'Lopburi': [
+    'Mueang Lopburi',
+    'Phatthana Nikhom',
+    'Nong Saeng',
+    'Chai Badan',
+    'Khaeng Khoi'
+  ],
+  'Mae Hong Son': [
+    'Mueang Mae Hong Son',
+    'Pai',
+    'Hoshan',
+    'Sop Moei',
+    'Maehongson'
+  ],
+  'Maha Sarakham': [
+    'Mueang Maha Sarakham',
+    'Kae Dam',
+    'Nong Sang',
+    'Chai Mongkhon',
+    'Na Chueak'
+  ],
+  'Mukdahan': [
+    'Mueang Mukdahan',
+    'Nikhom Kham Soi',
+    'Sang Khom',
+    'Don Tan',
+    'Khamcha-i'
+  ],
+  'Nakhon Nayok': [
+    'Mueang Nakhon Nayok',
+    'Ban Na',
+    'Nakhon Chai Si',
+    'Pak Phli'
+  ],
+  'Nakhon Pathom': [
+    'Mueang Nakhon Pathom',
+    'Nakhon Chai Si',
+    'Phutthamonthon',
+    'Sam Phran'
+  ],
+  'Nakhon Phanom': [
+    'Mueang Nakhon Phanom',
+    'Na Kham',
+    'Sangkhom',
+    'Chak Khiri',
+    'Bung Kan'
+  ],
+  'Nakhon Ratchasima': [
+    'Mueang Nakhon Ratchasima',
+    'Chok Chai',
+    'Pak Chong',
+    'Bua Yai',
+    'Wang Nam Khiao'
+  ],
+  'Nakhon Sawan': [
+    'Mueang Nakhon Sawan',
+    'Chom Tha',
+    'Banphot Phisai',
+    'Kao Liao',
+    'Takhli'
+  ],
+  'Nakhon Si Thammarat': [
+    'Mueang Nakhon Si Thammarat',
+    'Chaloem Phra Kiat',
+    'Thasala',
+    'Lom Sak',
+    'Nopphitam'
+  ],
+  'Nan': [
+    'Mueang Nan',
+    'Bo Kluea',
+    'Chaloem Phra Kiat',
+    'Na Muen',
+    'Song Khwae'
+  ],
+  'Narathiwat': [
+    'Mueang Narathiwat',
+    'Rueso',
+    'Sungai Kolok',
+    'Waeng',
+    'Su-ngai Padi'
+  ],
+  'Nong Bua Lam Phu': [
+    'Mueang Nong Bua Lam Phu',
+    'Na Wang',
+    'Mueang Na Phu',
+    'So Phisai'
+  ],
+  'Nong Khai': [
+    'Mueang Nong Khai',
+    'Sangkhom',
+    'Thakhek',
+    'Kham Khuean Kaeo'
+  ],
+  'Nonthaburi': [
+    'Mueang Nonthaburi',
+    'Pak Kret',
+    'Bang Bua Thong',
+    'Bang Yai'
+  ],
+  'Pathum Thani': [
+    'Mueang Pathum Thani',
+    'Khlong Luang',
+    'Lam Luk Ka',
+    'Sam Khok',
+    'Thanyaburi'
+  ],
+  'Pattani': [
+    'Mueang Pattani',
+    'Yarang',
+    'Yala',
+    'Nong Chik',
+    'Mai Kaen'
+  ],
+  'Phang Nga': [
+    'Mueang Phang Nga',
+    'Koh Yao',
+    'Takuapa',
+    'Kapong',
+    'Koh Panyee'
+  ],
+  'Phatthalung': [
+    'Mueang Phatthalung',
+    'Khuan Khanun',
+    'Pa Phayom',
+    'Pak Phayun',
+    'Khao Chaison'
+  ],
+  'Phayao': [
+    'Mueang Phayao',
+    'Chiang Kham',
+    'Pho Khun Ngam',
+    'Mae Chai'
+  ],
+  'Phra Nakhon Si Ayutthaya': [
+    'Mueang Phra Nakhon Si Ayutthaya',
+    'Bang Ban',
+    'Bang Pahan',
+    'Wang Noi',
+    'Phak Hai'
+  ],
+  'Prachuap Khiri Khan': [
+    'Mueang Prachuap Khiri Khan',
+    'Hua Hin',
+    'Pranburi',
+    'Sam Roi Yot'
+  ],
+  'Ranong': [
+    'Mueang Ranong',
+    'Koh Phayam',
+    'Koh Surin',
+    'Koh Ra'
+  ],
+  'Ratchaburi': [
+    'Mueang Ratchaburi',
+    'Damnoen Saduak',
+    'Suan Phueng',
+    'Phetchaburi'
+  ],
+  'Rayong': [
+    'Mueang Rayong',
+    'Ban Chang',
+    'Klaeng',
+    'Nong Lalok',
+    'Koh Samet'
+  ],
+  'Roi Et': [
+    'Mueang Roi Et',
+    'Kaset Wisai',
+    'Suwannaphum',
+    'Selaphum'
+  ],
+  'Sa Kaeo': [
+    'Mueang Sa Kaeo',
+    'Aranyaprathet',
+    'Wang Nam Yen',
+    'Khao Chakan'
+  ],
+  'Sakon Nakhon': [
+    'Mueang Sakon Nakhon',
+    'Nong Han',
+    'Khamcha-i',
+    'Phon Sawan'
+  ],
+  'Samut Prakan': [
+    'Mueang Samut Prakan',
+    'Bang Phli',
+    'Phra Pradaeng',
+    'Samut Khlong'
+  ],
+  'Samut Sakhon': [
+    'Mueang Samut Sakhon',
+    'Krathum Baen',
+    'Mahachai',
+    'Ban Phaeo'
+  ],
+  'Saraburi': [
+    'Mueang Saraburi',
+    'Kaeng Khoi',
+    'Wang Muang',
+    'Nong Khae'
+  ],
+  'Satun': [
+    'Mueang Satun',
+    'La-ngu',
+    'Koh Lipe',
+    'Koh Tarutao'
+  ],
+  'Sing Buri': [
+    'Mueang Sing Buri',
+    'Bang Rachan',
+    'In Buri',
+    'Phrom Buri'
+  ],
+  'Sisaket': [
+    'Mueang Sisaket',
+    'Kantharalak',
+    'Khun Han',
+    'Si Sa Ket'
+  ],
+  'Songkhla': [
+    'Mueang Songkhla',
+    'Hat Yai',
+    'Sadao',
+    'Kao Seng'
+  ],
+  'Sukhothai': [
+    'Mueang Sukhothai',
+    'Khiri Mat',
+    'Si Satchanalai',
+    'Sukhothai Thani'
+  ],
+  'Suphan Buri': [
+    'Mueang Suphan Buri',
+    'Don Chedi',
+    'Sam Chuk',
+    'Song Phi Nong'
+  ],
+  'Surat Thani': [
+    'Mueang Surat Thani',
+    'Koh Samui',
+    'Koh Pha Ngan',
+    'Chaiya'
+  ],
+  'Surin': [
+    'Mueang Surin',
+    'Chom Phra',
+    'Sangkhla Buri',
+    'Kap Choeng'
+  ],
+  'Tak': [
+    'Mueang Tak',
+    'Mae Sot',
+    'Tha Song Yang',
+    'Um Phang',
+    'Ban Tak'
+  ],
+  'Trang': [
+    'Mueang Trang',
+    'Hat Yai',
+    'Koh Kradan',
+    'Koh Muk'
+  ],
+  'Trat': [
+    'Mueang Trat',
+    'Koh Chang',
+    'Koh Kood',
+    'Koh Mak'
+  ],
+  'Ubon Ratchathani': [
+    'Mueang Ubon Ratchathani',
+    'Warin Chamrap',
+    'Nong Waeng',
+    'Si Sa Ket'
+  ],
+  'Udon Thani': [
+    'Mueang Udon Thani',
+    'Nong Wua So',
+    'Na Yung',
+    'Ban Phue',
+    'Khueang Nai'
+  ],
+  'Uthai Thani': [
+    'Mueang Uthai Thani',
+    'Lan Sak',
+    'Bannang Sata',
+    'Huai Khot'
+  ],
+  'Yala': [
+    'Mueang Yala',
+    'Bantalad',
+    'Yaha',
+    'Betong',
+    'Koh Pha Yao'
+  ],
+  'Yasothon': [
+    'Mueang Yasothon',
+    'Khaen Thong',
+    'Sai Mun',
+    'Loei'
+  ]
+  // เพิ่มจังหวัดและอำเภออื่น ๆ ตามต้องการ
+};
+
+// ตั้งค่า CORS
+app.use(cors());
+app.use(express.json());
+
+// ตั้งค่าการเชื่อมต่อ PostgreSQL
+const pool = new Pool({
+  user: 'weather',
+  host: 'localhost',
+  database: 'Weather',
+  password: 'weather',
+  port: 5432,
+});
+
+// ฟังก์ชันเพื่อตรวจสอบการเชื่อมต่อ PostgreSQL
+const checkConnection = async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('Connected to PostgreSQL:', res.rows[0]);
+    return true;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    return false;
+  }
+};
+
+// ฟังก์ชันเพื่อตรวจสอบและจัดเก็บข้อมูลสภาพอากาศ
+const fetchAndStoreWeatherData = async () => {
+    for (const [province, subLocations] of Object.entries(locations)) {
+      for (const subLocation of subLocations) {
+        try {
+          // ดึงข้อมูลจาก WeatherAPI.com
+          const response = await fetch(`http://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(`${subLocation}, ${province}`)}`);
+          const weatherData = await response.json();
+  
+          // เช็คว่ามีข้อมูลหรือไม่
+          if (response.ok) {
+            const { location: loc, current } = weatherData;
+            const { temp_c, humidity, wind_kph, gust_kph, condition, cloud, uv } = current;
+  
+            // ตรวจสอบข้อมูลในฐานข้อมูล
+            const query = 'SELECT * FROM weather WHERE location = $1 ORDER BY created_at DESC LIMIT 1';
+            const result = await pool.query(query, [loc.name]);
+  
+            // เช็คว่ามีข้อมูลล่าสุดหรือไม่
+            if (result.rows.length > 0) {
+              const latestData = result.rows[0];
+              // เปรียบเทียบข้อมูลใหม่กับข้อมูลล่าสุดในฐานข้อมูล
+              if (
+                latestData.temperature === temp_c &&
+                latestData.humidity === humidity &&
+                latestData.wind_speed === wind_kph &&
+                latestData.gusts === gust_kph &&
+                latestData.condition === condition.text &&
+                latestData.cloud_cover === cloud &&
+                latestData.uv_index === uv
+              ) {
+                console.log(`No changes in weather data for ${loc.name}. Skipping insert.`);
+                continue; // ข้ามไปยังจังหวัดถัดไป
+              }
+            }
+  
+            // ถ้าข้อมูลมีการเปลี่ยนแปลง ให้ทำการบันทึกข้อมูลใหม่
+            const insertQuery = `INSERT INTO weather (location, temperature, humidity, wind_speed, gusts, condition, cloud_cover, uv_index, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`;
+            await pool.query(insertQuery, [
+              loc.name,
+              temp_c,
+              humidity,
+              wind_kph,
+              gust_kph,
+              condition.text,
+              cloud,
+              uv
+            ]);
+            console.log(`Weather data for ${loc.name} updated successfully.`);
+          } else {
+            console.error(`Error fetching weather data for ${subLocation}, ${province}:`, weatherData.error);
+          }
+        } catch (error) {
+          console.error('Error processing location:', subLocation, error);
+        }
+      }
+    }
+};
+
+// เช็คการเชื่อมต่อกับ PostgreSQL
+checkConnection();
+
+// เส้นทางหลัก
+app.get('/', (req, res) => {
+  res.send('Weather API Server is running');
+});
+
+// เรียกใช้งานฟังก์ชัน fetchAndStoreWeatherData ทุก CHECK_INTERVAL
+setInterval(fetchAndStoreWeatherData, CHECK_INTERVAL);
+
+// เริ่มต้นเซิร์ฟเวอร์
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+});
+
+
+######
+
+
+
+
+
+#####สมบูรณ์สุด มีทั้งจังหวัดและอำเภอ 
+// server.js
+import express from 'express';
+import { Pool } from 'pg';
+import cors from 'cors';
+import fetch from 'node-fetch'; // ต้องติดตั้ง node-fetch
+
+const app = express();
+const port = 5000;   
+const API_KEY = '0d33acf579c643da933101854242010'; // API Key สำหรับ WeatherAPI.com
+const CHECK_INTERVAL = 60000; // ตรวจสอบทุก 60 วินาที
+
+// รายชื่อจังหวัดในประเทศไทย
+const locations = {
+  'Bangkok': [
+    'Khan Na Yao',
+    'Bang Khen',
+    'Dusit',
+    'Nakhon Chai Si',
+    'Prawet',
+    'Suan Luang',
+    'Sathon',
+    'Khlong Toei',
+    'Bang Na',
+    'Wang Thonglang',
+    'Lat Phrao',
+    'Chatuchak',
+    'Bang Sue',
+    'Phaya Thai',
+    'Ratchathewi',
+    'Pathum Wan',
+    'Nana',
+    'Bang Phlat',
+    'Dusit',
+    'Samsen Nai',
+    'Khet Chom Thong',
+    'Bang Phlat'
+  ],
+  'Amnat Charoen': [
+    'Mueang Amnat Charoen',
+    'Chanuman',
+    'Phana',
+    'Lue Amnat',
+    'Samrong'
+  ],
+  'Ang Thong': [
+    'Mueang Ang Thong',
+    'Chaiyo',
+    'Sawaeng Ha',
+    'Pa Mok',
+    'Nong Saeng',
+    'Wiset Chai Chan'
+  ],
+  'Bueng Kan': [
+    'Mueang Bueng Kan',
+    'Bung Khla',
+    'So Phisai',
+    'Phon Charoen',
+    'Tao Ngoi',
+    'Si Wilai'
+  ],
+  'Buriram': [
+    'Mueang Buriram',
+    'Khaen Dong',
+    'Lam Plai Mat',
+    'Nang Rong',
+    'Chaloem Phra Kiat',
+    'Sangkhla Buri',
+    'Buriram',
+    'Non Daeng',
+    'Prakhon Chai',
+    'Satuk'
+  ],
+  'Chachoengsao': [
+    'Mueang Chachoengsao',
+    'Bang Khla',
+    'Phanom Sarakham',
+    'Khlong Khuean',
+    'Ban Pho',
+    'Sathon',
+    'Sanam Chai Khet'
+  ],
+  'Chai Nat': [
+    'Mueang Chai Nat',
+    'Chai Badan',
+    'Sappaya',
+    'Huang Sam Mo',
+    'Noen Kham',
+    'Phrom Buri'
+  ],
+  'Chaiyaphum': [
+    'Mueang Chaiyaphum',
+    'Chatturat',
+    'Phu Khiao',
+    'Thep Sathit',
+    'Bamboo',
+    'Ban Khwao',
+    'Nong Bua Daeng'
+  ],
+  'Chanthaburi': [
+    'Mueang Chanthaburi',
+    'Laem Sing',
+    'Khao Khitchakut',
+    'Pong Nam Ron',
+    'Nong Sakae',
+    'Makham'
+  ],
+  'Chiang Mai': [
+    'Mueang Chiang Mai',
+    'Hang Dong',
+    'San Kamphaeng',
+    'Doi Saket',
+    'Mae Rim',
+    'Chiang Dao',
+    'Fang',
+    'Payap',
+    'Doi Tao',
+    'Om Koi',
+    'Chai Prakan',
+    'Hot',
+    'Phrao',
+    'San Sai',
+    'Saraphi',
+    'Suthep'
+  ],
+  'Chiang Rai': [
+    'Mueang Chiang Rai',
+    'Chiang Khong',
+    'Doi Luang',
+    'Doi Saket',
+    'Mae Fah Luang',
+    'Mae Chan',
+    'Mae Sai',
+    'Phaya Mengrai',
+    'Wiang Chiang Rung'
+  ],
+  'Chonburi': [
+    'Mueang Chonburi',
+    'Bang Saen',
+    'Sattahip',
+    'Pattaya',
+    'Nong Nooch',
+    'Bang Lamung',
+    'Sri Racha',
+    'Bo Thong'
+  ],
+  'Chumphon': [
+    'Mueang Chumphon',
+    'Thung Tako',
+    'Lang Suan',
+    'Sukhothai',
+    'Chum Kho',
+    'Pathio',
+    'Pha Thale',
+    'Wang Thong'
+  ],
+  'Kalasin': [
+    'Mueang Kalasin',
+    'Kamalasai',
+    'Kuchinarai',
+    'Khong Chai',
+    'Sikhottabong',
+    'Yang Talat'
+  ],
+  'Kamphaeng Phet': [
+    'Mueang Kamphaeng Phet',
+    'Khlong Lan',
+    'Phranakhon Si Ayutthaya',
+    'Khanu Woralaksaburi',
+    'Suwannakhuha'
+  ],
+  'Kanchanaburi': [
+    'Mueang Kanchanaburi',
+    'Sai Yok',
+    'Thamaka',
+    'Erawan',
+    'Dan Makham Tia',
+    'Sangkhla Buri',
+    'Huai Krachao'
+  ],
+  'Khon Kaen': [
+    'Mueang Khon Kaen',
+    'Nong Rua',
+    'Chonnabot',
+    'Khon Kaen',
+    'Nong Song Hong',
+    'Phu Wiang'
+  ],
+  'Krabi': [
+    'Mueang Krabi',
+    'Ao Luek',
+    'Klong Thom',
+    'Koh Lanta',
+    'Nong Thale',
+    'Poda'
+  ],
+  'Lampang': [
+    'Mueang Lampang',
+    'Ko Kha',
+    'Mae Tha',
+    'Thoen',
+    'Hang Chat'
+  ],
+  'Lamphun': [
+    'Mueang Lamphun',
+    'Thung Hua Chang',
+    'Pa Sang',
+    'Li',
+    'Chae Hom'
+  ],
+  'Loei': [
+    'Mueang Loei',
+    'Phu Ruea',
+    'Na Haeo',
+    'Dan Sai',
+    'Wang Saphung'
+  ],
+  'Lopburi': [
+    'Mueang Lopburi',
+    'Phatthana Nikhom',
+    'Nong Saeng',
+    'Chai Badan',
+    'Khaeng Khoi'
+  ],
+  'Mae Hong Son': [
+    'Mueang Mae Hong Son',
+    'Pai',
+    'Hoshan',
+    'Sop Moei',
+    'Maehongson'
+  ],
+  'Maha Sarakham': [
+    'Mueang Maha Sarakham',
+    'Kae Dam',
+    'Nong Sang',
+    'Chai Mongkhon',
+    'Na Chueak'
+  ],
+  'Mukdahan': [
+    'Mueang Mukdahan',
+    'Nikhom Kham Soi',
+    'Sang Khom',
+    'Don Tan',
+    'Khamcha-i'
+  ],
+  'Nakhon Nayok': [
+    'Mueang Nakhon Nayok',
+    'Ban Na',
+    'Nakhon Chai Si',
+    'Pak Phli'
+  ],
+  'Nakhon Pathom': [
+    'Mueang Nakhon Pathom',
+    'Nakhon Chai Si',
+    'Phutthamonthon',
+    'Sam Phran'
+  ],
+  'Nakhon Phanom': [
+    'Mueang Nakhon Phanom',
+    'Na Kham',
+    'Sangkhom',
+    'Chak Khiri',
+    'Bung Kan'
+  ],
+  'Nakhon Ratchasima': [
+    'Mueang Nakhon Ratchasima',
+    'Chok Chai',
+    'Pak Chong',
+    'Bua Yai',
+    'Wang Nam Khiao'
+  ],
+  'Nakhon Sawan': [
+    'Mueang Nakhon Sawan',
+    'Chom Tha',
+    'Banphot Phisai',
+    'Kao Liao',
+    'Takhli'
+  ],
+  'Nakhon Si Thammarat': [
+    'Mueang Nakhon Si Thammarat',
+    'Chaloem Phra Kiat',
+    'Thasala',
+    'Lom Sak',
+    'Nopphitam'
+  ],
+  'Nan': [
+    'Mueang Nan',
+    'Bo Kluea',
+    'Chaloem Phra Kiat',
+    'Na Muen',
+    'Song Khwae'
+  ],
+  'Narathiwat': [
+    'Mueang Narathiwat',
+    'Rueso',
+    'Sungai Kolok',
+    'Waeng',
+    'Su-ngai Padi'
+  ],
+  'Nong Bua Lam Phu': [
+    'Mueang Nong Bua Lam Phu',
+    'Na Wang',
+    'Mueang Na Phu',
+    'So Phisai'
+  ],
+  'Nong Khai': [
+    'Mueang Nong Khai',
+    'Sangkhom',
+    'Thakhek',
+    'Kham Khuean Kaeo'
+  ],
+  'Nonthaburi': [
+    'Mueang Nonthaburi',
+    'Pak Kret',
+    'Bang Bua Thong',
+    'Bang Yai'
+  ],
+  'Pathum Thani': [
+    'Mueang Pathum Thani',
+    'Khlong Luang',
+    'Lam Luk Ka',
+    'Sam Khok',
+    'Thanyaburi'
+  ],
+  'Pattani': [
+    'Mueang Pattani',
+    'Yarang',
+    'Yala',
+    'Nong Chik',
+    'Mai Kaen'
+  ],
+  'Phang Nga': [
+    'Mueang Phang Nga',
+    'Koh Yao',
+    'Takuapa',
+    'Kapong',
+    'Koh Panyee'
+  ],
+  'Phatthalung': [
+    'Mueang Phatthalung',
+    'Khuan Khanun',
+    'Pa Phayom',
+    'Pak Phayun',
+    'Khao Chaison'
+  ],
+  'Phayao': [
+    'Mueang Phayao',
+    'Chiang Kham',
+    'Pho Khun Ngam',
+    'Mae Chai'
+  ],
+  'Phra Nakhon Si Ayutthaya': [
+    'Mueang Phra Nakhon Si Ayutthaya',
+    'Bang Ban',
+    'Bang Pahan',
+    'Wang Noi',
+    'Phak Hai'
+  ],
+  'Prachuap Khiri Khan': [
+    'Mueang Prachuap Khiri Khan',
+    'Hua Hin',
+    'Pranburi',
+    'Sam Roi Yot'
+  ],
+  'Ranong': [
+    'Mueang Ranong',
+    'Koh Phayam',
+    'Koh Surin',
+    'Koh Ra'
+  ],
+  'Ratchaburi': [
+    'Mueang Ratchaburi',
+    'Damnoen Saduak',
+    'Suan Phueng',
+    'Phetchaburi'
+  ],
+  'Rayong': [
+    'Mueang Rayong',
+    'Ban Chang',
+    'Klaeng',
+    'Nong Lalok',
+    'Koh Samet'
+  ],
+  'Roi Et': [
+    'Mueang Roi Et',
+    'Kaset Wisai',
+    'Suwannaphum',
+    'Selaphum'
+  ],
+  'Sa Kaeo': [
+    'Mueang Sa Kaeo',
+    'Aranyaprathet',
+    'Wang Nam Yen',
+    'Khao Chakan'
+  ],
+  'Sakon Nakhon': [
+    'Mueang Sakon Nakhon',
+    'Nong Han',
+    'Khamcha-i',
+    'Phon Sawan'
+  ],
+  'Samut Prakan': [
+    'Mueang Samut Prakan',
+    'Bang Phli',
+    'Phra Pradaeng',
+    'Samut Khlong'
+  ],
+  'Samut Sakhon': [
+    'Mueang Samut Sakhon',
+    'Krathum Baen',
+    'Mahachai',
+    'Ban Phaeo'
+  ],
+  'Saraburi': [
+    'Mueang Saraburi',
+    'Kaeng Khoi',
+    'Wang Muang',
+    'Nong Khae'
+  ],
+  'Satun': [
+    'Mueang Satun',
+    'La-ngu',
+    'Koh Lipe',
+    'Koh Tarutao'
+  ],
+  'Sing Buri': [
+    'Mueang Sing Buri',
+    'Bang Rachan',
+    'In Buri',
+    'Phrom Buri'
+  ],
+  'Sisaket': [
+    'Mueang Sisaket',
+    'Kantharalak',
+    'Khun Han',
+    'Si Sa Ket'
+  ],
+  'Songkhla': [
+    'Mueang Songkhla',
+    'Hat Yai',
+    'Sadao',
+    'Kao Seng'
+  ],
+  'Sukhothai': [
+    'Mueang Sukhothai',
+    'Khiri Mat',
+    'Si Satchanalai',
+    'Sukhothai Thani'
+  ],
+  'Suphan Buri': [
+    'Mueang Suphan Buri',
+    'Don Chedi',
+    'Sam Chuk',
+    'Song Phi Nong'
+  ],
+  'Surat Thani': [
+    'Mueang Surat Thani',
+    'Koh Samui',
+    'Koh Pha Ngan',
+    'Chaiya'
+  ],
+  'Surin': [
+    'Mueang Surin',
+    'Chom Phra',
+    'Sangkhla Buri',
+    'Kap Choeng'
+  ],
+  'Tak': [
+    'Mueang Tak',
+    'Mae Sot',
+    'Tha Song Yang',
+    'Um Phang',
+    'Ban Tak'
+  ],
+  'Trang': [
+    'Mueang Trang',
+    'Hat Yai',
+    'Koh Kradan',
+    'Koh Muk'
+  ],
+  'Trat': [
+    'Mueang Trat',
+    'Koh Chang',
+    'Koh Kood',
+    'Koh Mak'
+  ],
+  'Ubon Ratchathani': [
+    'Mueang Ubon Ratchathani',
+    'Warin Chamrap',
+    'Nong Waeng',
+    'Si Sa Ket'
+  ],
+  'Udon Thani': [
+    'Mueang Udon Thani',
+    'Nong Wua So',
+    'Na Yung',
+    'Ban Phue',
+    'Khueang Nai'
+  ],
+  'Uthai Thani': [
+    'Mueang Uthai Thani',
+    'Lan Sak',
+    'Bannang Sata',
+    'Huai Khot'
+  ],
+  'Yala': [
+    'Mueang Yala',
+    'Bantalad',
+    'Yaha',
+    'Betong',
+    'Koh Pha Yao'
+  ],
+  'Yasothon': [
+    'Mueang Yasothon',
+    'Khaen Thong',
+    'Sai Mun',
+    'Loei'
+  ]
+  // เพิ่มจังหวัดและอำเภออื่น ๆ ตามต้องการ
+};
+
+// ตั้งค่า CORS
+app.use(cors());
+app.use(express.json());
+
+// ตั้งค่าการเชื่อมต่อ PostgreSQL
+const pool = new Pool({
+  user: 'weather',
+  host: 'localhost',
+  database: 'Weather',
+  password: 'weather',
+  port: 5432,
+});
+
+// ฟังก์ชันเพื่อตรวจสอบการเชื่อมต่อ PostgreSQL
+const checkConnection = async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('Connected to PostgreSQL:', res.rows[0]);
+    return true;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    return false;
+  }
+};
+
+// ฟังก์ชันเพื่อตรวจสอบและจัดเก็บข้อมูลสภาพอากาศ
+const fetchAndStoreWeatherData = async () => {
+    for (const [province, subLocations] of Object.entries(locations)) {
+        for (const district of subLocations) {
+            try {
+                // ดึงข้อมูลจาก WeatherAPI.com
+                const response = await fetch(`http://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(`${district}, ${province}`)}`);
+                const weatherData = await response.json();
+
+                // เช็คว่ามีข้อมูลหรือไม่
+                if (response.ok) {
+                    const { current } = weatherData;
+                    const { temp_c, humidity, wind_kph, gust_kph, condition, cloud, uv } = current;
+
+                    // ตรวจสอบข้อมูลในฐานข้อมูล
+                    const query = 'SELECT * FROM weather WHERE province = $1 AND district = $2 ORDER BY created_at DESC LIMIT 1';
+                    const result = await pool.query(query, [province, district]);
+
+                    // เช็คว่ามีข้อมูลล่าสุดหรือไม่
+                    if (result.rows.length > 0) {
+                        const latestData = result.rows[0];
+                        // เปรียบเทียบข้อมูลใหม่กับข้อมูลล่าสุดในฐานข้อมูล
+                        if (
+                            latestData.temperature === temp_c &&
+                            latestData.humidity === humidity &&
+                            latestData.wind_speed === wind_kph &&
+                            latestData.gusts === gust_kph &&
+                            latestData.condition === condition.text &&
+                            latestData.cloud_cover === cloud &&
+                            latestData.uv_index === uv
+                        ) {
+                            console.log(`No changes in weather data for ${district}, ${province}. Skipping insert.`);
+                            continue; // ข้ามไปยังอำเภอต่อไป
+                        }
+                    }
+
+                    // ถ้าข้อมูลมีการเปลี่ยนแปลง ให้ทำการบันทึกข้อมูลใหม่
+                    const insertQuery = `INSERT INTO weather (province, district, temperature, humidity, wind_speed, gusts, condition, cloud_cover, uv_index, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`;
+                    await pool.query(insertQuery, [
+                        province,
+                        district,
+                        temp_c,
+                        humidity,
+                        wind_kph,
+                        gust_kph,
+                        condition.text,
+                        cloud,
+                        uv
+                    ]);
+                    console.log(`Weather data for ${district} in ${province} updated successfully.`);
+                } else {
+                    console.error(`Error fetching weather data for ${district}, ${province}:`, weatherData.error);
+                }
+            } catch (error) {
+                console.error('Error processing district:', district, error);
+            }
+        }
+    }
+};
+
+// เช็คการเชื่อมต่อกับ PostgreSQL
+checkConnection();
+
+// เส้นทางหลัก
+app.get('/', (req, res) => {
+    res.send('Weather API Server is running');
+});
+
+// เรียกใช้งานฟังก์ชัน fetchAndStoreWeatherData ทุก CHECK_INTERVAL
+setInterval(fetchAndStoreWeatherData, CHECK_INTERVAL);
+
+// เริ่มต้นเซิร์ฟเวอร์
+app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+});
+#################
+
+
+############
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+function App() {
+  const [provinces, setProvinces] = useState([]);
+  const [selectedProvince, setSelectedProvince] = useState('');
+  const [districts, setDistricts] = useState([]);
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [weatherHistory, setWeatherHistory] = useState([]);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [error, setError] = useState('');
+
+  // Fetch provinces when the component mounts
+  useEffect(() => {
+    fetchProvinces();
+  }, []);
+
+  const fetchProvinces = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/provinces');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setProvinces(data);
+    } catch (error) {
+      setError('Error fetching provinces: ' + error.message);
+    }
+  };
+
+  // Fetch districts when a province is selected
+  useEffect(() => {
+    if (selectedProvince) {
+      fetchDistricts(selectedProvince);
+    }
+  }, [selectedProvince]);
+
+  const fetchDistricts = async (province) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/districts/${province}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setDistricts(data);
+    } catch (error) {
+      setError('Error fetching districts: ' + error.message);
+    }
+  };
+
+  // Fetch weather history when a district is selected
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetchWeatherHistory(selectedDistrict);
+    }
+  }, [selectedDistrict]);
+
+  const fetchWeatherHistory = async (district) => {
+    setLoadingWeather(true);
+    try {
+      const response = await fetch(`http://localhost:5001/api/weather_history/${district}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setWeatherHistory(data);
+    } catch (error) {
+      setError('Error fetching weather history: ' + error.message);
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
+
+  return (
+    <div className="App">
+      <h1>Weather History</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {/* Province Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="province">Select Province:</label>
+        <select
+          id="province"
+          value={selectedProvince}
+          onChange={(e) => {
+            setSelectedProvince(e.target.value);
+            setSelectedDistrict('');
+            setWeatherHistory([]);
+          }}
+        >
+          <option value="">-- Select Province --</option>
+          {provinces.map((province, index) => (
+            <option key={index} value={province[0]}>
+              {province[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* District Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="district">Select District:</label>
+        <select
+          id="district"
+          value={selectedDistrict}
+          onChange={(e) => setSelectedDistrict(e.target.value)}
+          disabled={!selectedProvince}
+        >
+          <option value="">-- Select District --</option>
+          {districts.map((district, index) => (
+            <option key={index} value={district[0]}>
+              {district[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Weather History Table */}
+      {selectedDistrict && (
+        <div className="weather-history-container">
+          <h2>Weather History for {selectedDistrict}</h2>
+          {loadingWeather ? (
+            <p>Loading...</p>
+          ) : (
+            <table className="weather-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Temperature</th>
+                  <th>Humidity</th>
+                  <th>Wind Speed</th>
+                  <th>Gusts</th>
+                  <th>Condition</th>
+                  <th>Cloud Cover</th>
+                  <th>UV Index</th>
+                  
+                </tr>
+              </thead>
+              <tbody>
+                {weatherHistory.map((record, index) => (
+                  <tr key={index}>
+                    <td>{record[7]}</td>
+                    <td>{record[0]}</td>
+                    <td>{record[1]}</td>
+                    <td>{record[2]}</td>
+                    <td>{record[3]}</td>
+                    <td>{record[4]}</td>
+                    <td>{record[5]}</td>
+                    <td>{record[6]}</td>
+                    
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
+
+############
+
+
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+function App() {
+  const [provinces, setProvinces] = useState([]);
+  const [selectedProvince, setSelectedProvince] = useState('');
+  const [districts, setDistricts] = useState([]);
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [weatherHistory, setWeatherHistory] = useState([]);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [error, setError] = useState('');
+
+  // Fetch provinces when the component mounts
+  useEffect(() => {
+    fetchProvinces();
+  }, []);
+
+  const fetchProvinces = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/provinces');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setProvinces(data);
+    } catch (error) {
+      setError('Error fetching provinces: ' + error.message);
+    }
+  };
+
+  // Fetch districts when a province is selected
+  useEffect(() => {
+    if (selectedProvince) {
+      fetchDistricts(selectedProvince);
+    }
+  }, [selectedProvince]);
+
+  const fetchDistricts = async (province) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/districts/${province}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setDistricts(data);
+    } catch (error) {
+      setError('Error fetching districts: ' + error.message);
+    }
+  };
+
+  // Fetch weather history when a district is selected
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetchWeatherHistory(selectedDistrict);
+    }
+  }, [selectedDistrict]);
+
+  const fetchWeatherHistory = async (district) => {
+    setLoadingWeather(true);
+    try {
+      const response = await fetch(`http://localhost:5001/api/weather_history/${district}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setWeatherHistory(data);
+    } catch (error) {
+      setError('Error fetching weather history: ' + error.message);
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
+
+  return (
+    <div className="App">
+        <a href="https://www.weatherapi.com/" title="Free Weather API">
+            <img src="//cdn.weatherapi.com/v4/images/weatherapi_logo.png" alt="Weather data by WeatherAPI.com" border="0" style={{ position: 'absolute', top: '10px', left: '10px' }} />
+        </a>
+        <h1 style={{ marginTop: '50px' }}>Weather History</h1> 
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {/* Province Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="province">Select Province:</label>
+        <select
+          id="province"
+          value={selectedProvince}
+          onChange={(e) => {
+            setSelectedProvince(e.target.value);
+            setSelectedDistrict('');
+            setWeatherHistory([]);
+          }}
+        >
+          <option value="">-- Select Province --</option>
+          {provinces.map((province, index) => (
+            <option key={index} value={province[0]}>
+              {province[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* District Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="district">Select District:</label>
+        <select
+          id="district"
+          value={selectedDistrict}
+          onChange={(e) => setSelectedDistrict(e.target.value)}
+          disabled={!selectedProvince}
+        >
+          <option value="">-- Select District --</option>
+          {districts.map((district, index) => (
+            <option key={index} value={district[0]}>
+              {district[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Weather History Table */}
+      {selectedDistrict && (
+        <div className="weather-history-container">
+          <h2>Weather History for {selectedDistrict}</h2>
+          {loadingWeather ? (
+            <p>Loading...</p>
+          ) : (
+            <table className="weather-table">
+              <thead>
+                <tr>
+                <th>วันที่</th>
+                <th>อุณหภูมิ (°C)</th>
+                <th>ความชื้น (%)</th>
+                <th>ความเร็วลม (m/s)</th>
+                <th>ลมกระโชก (m/s)</th>
+                <th>สภาพอากาศ</th>
+                <th>การปกคลุมของเมฆ (%)</th>
+                <th>ดัชนี UV</th>
+                  
+                </tr>
+              </thead>
+              <tbody>
+                {weatherHistory.map((record, index) => (
+                  <tr key={index}>
+                    <td>{record[7]}</td>
+                    <td>{record[0]}</td>
+                    <td>{record[1]}</td>
+                    <td>{record[2]}</td>
+                    <td>{record[3]}</td>
+                    <td>{record[4]}</td>
+                    <td>{record[5]}</td>
+                    <td>{record[6]}</td>
+                    
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
+
+###############
+
+// รายชื่อจังหวัดในประเทศไทย
+const locations = {
+  'Bangkok': [
+    'Khan Na Yao',
+    'Bang Khen',
+    'Dusit',
+    'Nakhon Chai Si',
+    'Prawet',
+    'Suan Luang',
+    'Sathon',
+    'Khlong Toei',
+    'Bang Na',
+    'Wang Thonglang',
+    'Lat Phrao',
+    'Chatuchak',
+    'Bang Sue',
+    'Phaya Thai',
+    'Ratchathewi',
+    'Pathum Wan',
+    'Nana',
+    'Bang Phlat',
+    'Dusit',
+    'Samsen Nai',
+    'Khet Chom Thong',
+    'Bang Phlat'
+  ],
+  'Amnat Charoen': [
+    'Mueang Amnat Charoen',
+    'Chanuman',
+    'Phana',
+    'Lue Amnat',
+    'Samrong'
+  ],
+  'Ang Thong': [
+    'Mueang Ang Thong',
+    'Chaiyo',
+    'Sawaeng Ha',
+    'Pa Mok',
+    'Nong Saeng',
+    'Wiset Chai Chan'
+  ],
+  'Bueng Kan': [
+    'Mueang Bueng Kan',
+    'Bung Khla',
+    'So Phisai',
+    'Phon Charoen',
+    'Tao Ngoi',
+    'Si Wilai'
+  ],
+  'Buriram': [
+    'Mueang Buriram',
+    'Khaen Dong',
+    'Lam Plai Mat',
+    'Nang Rong',
+    'Chaloem Phra Kiat',
+    'Sangkhla Buri',
+    'Buriram',
+    'Non Daeng',
+    'Prakhon Chai',
+    'Satuk'
+  ],
+  'Chachoengsao': [
+    'Mueang Chachoengsao',
+    'Bang Khla',
+    'Phanom Sarakham',
+    'Khlong Khuean',
+    'Ban Pho',
+    'Sathon',
+    'Sanam Chai Khet'
+  ],
+  'Chai Nat': [
+    'Mueang Chai Nat',
+    'Chai Badan',
+    'Sappaya',
+    'Huang Sam Mo',
+    'Noen Kham',
+    'Phrom Buri'
+  ],
+  'Chaiyaphum': [
+    'Mueang Chaiyaphum',
+    'Chatturat',
+    'Phu Khiao',
+    'Thep Sathit',
+    'Bamboo',
+    'Ban Khwao',
+    'Nong Bua Daeng'
+  ],
+  'Chanthaburi': [
+    'Mueang Chanthaburi',
+    'Laem Sing',
+    'Khao Khitchakut',
+    'Pong Nam Ron',
+    'Nong Sakae',
+    'Makham'
+  ],
+  'Chiang Mai': [
+    'Mueang Chiang Mai',
+    'Hang Dong',
+    'San Kamphaeng',
+    'Doi Saket',
+    'Mae Rim',
+    'Chiang Dao',
+    'Fang',
+    'Payap',
+    'Doi Tao',
+    'Om Koi',
+    'Chai Prakan',
+    'Hot',
+    'Phrao',
+    'San Sai',
+    'Saraphi',
+    'Suthep'
+  ],
+  'Chiang Rai': [
+    'Mueang Chiang Rai',
+    'Chiang Khong',
+    'Doi Luang',
+    'Doi Saket',
+    'Mae Fah Luang',
+    'Mae Chan',
+    'Mae Sai',
+    'Phaya Mengrai',
+    'Wiang Chiang Rung'
+  ],
+  'Chonburi': [
+    'Mueang Chonburi',
+    'Bang Saen',
+    'Sattahip',
+    'Pattaya',
+    'Nong Nooch',
+    'Bang Lamung',
+    'Sri Racha',
+    'Bo Thong'
+  ],
+  'Chumphon': [
+    'Mueang Chumphon',
+    'Thung Tako',
+    'Lang Suan',
+    'Sukhothai',
+    'Chum Kho',
+    'Pathio',
+    'Pha Thale',
+    'Wang Thong'
+  ],
+  'Kalasin': [
+    'Mueang Kalasin',
+    'Kamalasai',
+    'Kuchinarai',
+    'Khong Chai',
+    'Sikhottabong',
+    'Yang Talat'
+  ],
+  'Kamphaeng Phet': [
+    'Mueang Kamphaeng Phet',
+    'Khlong Lan',
+    'Phranakhon Si Ayutthaya',
+    'Khanu Woralaksaburi',
+    'Suwannakhuha'
+  ],
+  'Kanchanaburi': [
+    'Mueang Kanchanaburi',
+    'Sai Yok',
+    'Thamaka',
+    'Erawan',
+    'Dan Makham Tia',
+    'Sangkhla Buri',
+    'Huai Krachao'
+  ],
+  'Khon Kaen': [
+    'Mueang Khon Kaen',
+    'Nong Rua',
+    'Chonnabot',
+    'Khon Kaen',
+    'Nong Song Hong',
+    'Phu Wiang'
+  ],
+  'Krabi': [
+    'Mueang Krabi',
+    'Ao Luek',
+    'Klong Thom',
+    'Koh Lanta',
+    'Nong Thale',
+    'Poda'
+  ],
+  'Lampang': [
+    'Mueang Lampang',
+    'Ko Kha',
+    'Mae Tha',
+    'Thoen',
+    'Hang Chat'
+  ],
+  'Lamphun': [
+    'Mueang Lamphun',
+    'Thung Hua Chang',
+    'Pa Sang',
+    'Li',
+    'Chae Hom'
+  ],
+  'Loei': [
+    'Mueang Loei',
+    'Phu Ruea',
+    'Na Haeo',
+    'Dan Sai',
+    'Wang Saphung'
+  ],
+  'Lopburi': [
+    'Mueang Lopburi',
+    'Phatthana Nikhom',
+    'Nong Saeng',
+    'Chai Badan',
+    'Khaeng Khoi'
+  ],
+  'Mae Hong Son': [
+    'Mueang Mae Hong Son',
+    'Pai',
+    'Hoshan',
+    'Sop Moei',
+    'Maehongson'
+  ],
+  'Maha Sarakham': [
+    'Mueang Maha Sarakham',
+    'Kae Dam',
+    'Nong Sang',
+    'Chai Mongkhon',
+    'Na Chueak'
+  ],
+  'Mukdahan': [
+    'Mueang Mukdahan',
+    'Nikhom Kham Soi',
+    'Sang Khom',
+    'Don Tan',
+    'Khamcha-i'
+  ],
+  'Nakhon Nayok': [
+    'Mueang Nakhon Nayok',
+    'Ban Na',
+    'Nakhon Chai Si',
+    'Pak Phli'
+  ],
+  'Nakhon Pathom': [
+    'Mueang Nakhon Pathom',
+    'Nakhon Chai Si',
+    'Phutthamonthon',
+    'Sam Phran'
+  ],
+  'Nakhon Phanom': [
+    'Mueang Nakhon Phanom',
+    'Na Kham',
+    'Sangkhom',
+    'Chak Khiri',
+    'Bung Kan'
+  ],
+  'Nakhon Ratchasima': [
+    'Mueang Nakhon Ratchasima',
+    'Chok Chai',
+    'Pak Chong',
+    'Bua Yai',
+    'Wang Nam Khiao'
+  ],
+  'Nakhon Sawan': [
+    'Mueang Nakhon Sawan',
+    'Chom Tha',
+    'Banphot Phisai',
+    'Kao Liao',
+    'Takhli'
+  ],
+  'Nakhon Si Thammarat': [
+    'Mueang Nakhon Si Thammarat',
+    'Chaloem Phra Kiat',
+    'Thasala',
+    'Lom Sak',
+    'Nopphitam'
+  ],
+  'Nan': [
+    'Mueang Nan',
+    'Bo Kluea',
+    'Chaloem Phra Kiat',
+    'Na Muen',
+    'Song Khwae'
+  ],
+  'Narathiwat': [
+    'Mueang Narathiwat',
+    'Rueso',
+    'Sungai Kolok',
+    'Waeng',
+    'Su-ngai Padi'
+  ],
+  'Nong Bua Lam Phu': [
+    'Mueang Nong Bua Lam Phu',
+    'Na Wang',
+    'Mueang Na Phu',
+    'So Phisai'
+  ],
+  'Nong Khai': [
+    'Mueang Nong Khai',
+    'Sangkhom',
+    'Thakhek',
+    'Kham Khuean Kaeo'
+  ],
+  'Nonthaburi': [
+    'Mueang Nonthaburi',
+    'Bang Kruai',
+    'Bang Yai',
+    'Bang Bua Thong',
+    'Sai Noi',
+    'Pak Kret'
+  ],
+  'Pathum Thani': [
+    'Mueang Pathum Thani',
+    'Khlong Luang',
+    'Lam Luk Ka',
+    'Sam Khok',
+    'Thanyaburi'
+  ],
+  'Pattani': [
+    'Mueang Pattani',
+    'Yarang',
+    'Yala',
+    'Nong Chik',
+    'Mai Kaen'
+  ],
+  'Phang Nga': [
+    'Mueang Phang Nga',
+    'Koh Yao',
+    'Takuapa',
+    'Kapong',
+    'Koh Panyee'
+  ],
+  'Phatthalung': [
+    'Mueang Phatthalung',
+    'Khuan Khanun',
+    'Pa Phayom',
+    'Pak Phayun',
+    'Khao Chaison'
+  ],
+  'Phayao': [
+    'Mueang Phayao',
+    'Chiang Kham',
+    'Pho Khun Ngam',
+    'Mae Chai'
+  ],
+  'Phra Nakhon Si Ayutthaya': [
+    'Mueang Phra Nakhon Si Ayutthaya',
+    'Bang Ban',
+    'Bang Pahan',
+    'Wang Noi',
+    'Phak Hai'
+  ],
+  'Prachuap Khiri Khan': [
+    'Mueang Prachuap Khiri Khan',
+    'Hua Hin',
+    'Pranburi',
+    'Sam Roi Yot'
+  ],
+  'Ranong': [
+    'Mueang Ranong',
+    'Koh Phayam',
+    'Koh Surin',
+    'Koh Ra'
+  ],
+  'Ratchaburi': [
+    'Mueang Ratchaburi',
+    'Damnoen Saduak',
+    'Suan Phueng',
+    'Phetchaburi'
+  ],
+  'Rayong': [
+    'Mueang Rayong',
+    'Ban Chang',
+    'Klaeng',
+    'Nong Lalok',
+    'Koh Samet'
+  ],
+  'Roi Et': [
+    'Mueang Roi Et',
+    'Kaset Wisai',
+    'Suwannaphum',
+    'Selaphum'
+  ],
+  'Sa Kaeo': [
+    'Mueang Sa Kaeo',
+    'Aranyaprathet',
+    'Wang Nam Yen',
+    'Khao Chakan'
+  ],
+  'Sakon Nakhon': [
+    'Mueang Sakon Nakhon',
+    'Nong Han',
+    'Khamcha-i',
+    'Phon Sawan'
+  ],
+  'Samut Prakan': [
+    'Mueang Samut Prakan',
+    'Bang Phli',
+    'Phra Pradaeng',
+    'Samut Khlong'
+  ],
+  'Samut Sakhon': [
+    'Mueang Samut Sakhon',
+    'Krathum Baen',
+    'Mahachai',
+    'Ban Phaeo'
+  ],
+  'Saraburi': [
+    'Mueang Saraburi',
+    'Kaeng Khoi',
+    'Wang Muang',
+    'Nong Khae'
+  ],
+  'Satun': [
+    'Mueang Satun',
+    'La-ngu',
+    'Koh Lipe',
+    'Koh Tarutao'
+  ],
+  'Sing Buri': [
+    'Mueang Sing Buri',
+    'Bang Rachan',
+    'In Buri',
+    'Phrom Buri'
+  ],
+  'Sisaket': [
+    'Mueang Sisaket',
+    'Kantharalak',
+    'Khun Han',
+    'Si Sa Ket'
+  ],
+  'Songkhla': [
+    'Mueang Songkhla',
+    'Hat Yai',
+    'Sadao',
+    'Kao Seng'
+  ],
+  'Sukhothai': [
+    'Mueang Sukhothai',
+    'Khiri Mat',
+    'Si Satchanalai',
+    'Sukhothai Thani'
+  ],
+  'Suphan Buri': [
+    'Mueang Suphan Buri',
+    'Don Chedi',
+    'Sam Chuk',
+    'Song Phi Nong'
+  ],
+  'Surat Thani': [
+    'Mueang Surat Thani',
+    'Koh Samui',
+    'Koh Pha Ngan',
+    'Chaiya'
+  ],
+  'Surin': [
+    'Mueang Surin',
+    'Chom Phra',
+    'Sangkhla Buri',
+    'Kap Choeng'
+  ],
+  'Tak': [
+    'Mueang Tak',
+    'Mae Sot',
+    'Tha Song Yang',
+    'Um Phang',
+    'Ban Tak'
+  ],
+  'Trang': [
+    'Mueang Trang',
+    'Hat Yai',
+    'Koh Kradan',
+    'Koh Muk'
+  ],
+  'Trat': [
+    'Mueang Trat',
+    'Koh Chang',
+    'Koh Kood',
+    'Koh Mak'
+  ],
+  'Ubon Ratchathani': [
+    'Mueang Ubon Ratchathani',
+    'Warin Chamrap',
+    'Nong Waeng',
+    'Si Sa Ket'
+  ],
+  'Udon Thani': [
+    'Mueang Udon Thani',
+    'Nong Wua So',
+    'Na Yung',
+    'Ban Phue',
+    'Khueang Nai'
+  ],
+  'Uthai Thani': [
+    'Mueang Uthai Thani',
+    'Lan Sak',
+    'Bannang Sata',
+    'Huai Khot'
+  ],
+  'Yala': [
+    'Mueang Yala',
+    'Bantalad',
+    'Yaha',
+    'Betong',
+    'Koh Pha Yao'
+  ],
+  'Yasothon': [
+    'Mueang Yasothon',
+    'Khaen Thong',
+    'Sai Mun',
+    'Loei'
+  ],
+  'Phetchabun': [
+    'Mueang Phetchabun',
+    'Lom Sak',
+    'Khao Kho',
+    'Wichian Buri',
+    'Si Thep',
+    'Nong Phai',
+    'Bueng Sam Phan',
+    'Nam Nao',
+    'Chon Daen',
+    'Dong Charoen',
+    'Lom Kao'
+]
+  // เพิ่มจังหวัดและอำเภออื่น ๆ ตามต้องการ
+};
+
+#################
+server.js
+// server.js
+import express from 'express';
+import { Pool } from 'pg';
+import cors from 'cors';
+import fetch from 'node-fetch'; // ต้องติดตั้ง node-fetch
+
+import WebSocket from 'ws'; // เพิ่มไลบรารี ws
+
+const app = express();
+const port = 5000;   
+const API_KEY = '0d33acf579c643da933101854242010'; // API Key สำหรับ WeatherAPI.com
+const CHECK_INTERVAL = 300000; // ตรวจสอบทุก 60000 = 60 วินาที    300000=5นาที
+
+// รายชื่อจังหวัดในประเทศไทย
+const locations = {
+  'Phetchabun': [
+    'Mueang Phetchabun',
+    'Lom Sak',
+    'Khao Kho',
+    'Wichian Buri',
+    'Si Thep',
+    'Nong Phai',
+    'Bueng Sam Phan',
+    'Nam Nao',
+    'Chon Daen',
+    'Dong Charoen',
+    'Lom Kao'
+]
+  // เพิ่มจังหวัดและอำเภออื่น ๆ ตามต้องการ
+};
+
+// ตั้งค่า CORS
+app.use(cors());
+app.use(express.json());
+
+// ตั้งค่าการเชื่อมต่อ PostgreSQL
+const pool = new Pool({
+  user: 'weather',
+  host: 'localhost',
+  database: 'Weather',
+  password: 'weather',
+  port: 5432,
+});
+
+// ฟังก์ชันเพื่อตรวจสอบการเชื่อมต่อ PostgreSQL
+const checkConnection = async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('Connected to PostgreSQL:', res.rows[0]);
+    return true;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    return false;
+  }
+};
+
+// ฟังก์ชันเพื่อตรวจสอบและจัดเก็บข้อมูลสภาพอากาศ
+const fetchAndStoreWeatherData = async () => {
+    for (const [province, subLocations] of Object.entries(locations)) {
+        for (const district of subLocations) {
+            try {
+                // ดึงข้อมูลจาก WeatherAPI.com
+                const response = await fetch(`http://api.weatherapi.com/v1/current.json?key=${API_KEY}&q=${encodeURIComponent(`${district}, ${province}`)}`);
+                const weatherData = await response.json();
+
+                // เช็คว่ามีข้อมูลหรือไม่
+                if (response.ok) {
+                    const { current } = weatherData;
+                    const { temp_c, humidity, wind_kph, gust_kph, condition, cloud, uv } = current;
+
+                    // ตรวจสอบข้อมูลในฐานข้อมูล
+                    const query = 'SELECT * FROM weather WHERE province = $1 AND district = $2 ORDER BY created_at DESC LIMIT 1';
+                    const result = await pool.query(query, [province, district]);
+
+                    // เช็คว่ามีข้อมูลล่าสุดหรือไม่
+                    if (result.rows.length > 0) {
+                        const latestData = result.rows[0];
+                        // เปรียบเทียบข้อมูลใหม่กับข้อมูลล่าสุดในฐานข้อมูล
+                        if (
+                            latestData.temperature === temp_c &&
+                            latestData.humidity === humidity &&
+                            latestData.wind_speed === wind_kph &&
+                            latestData.gusts === gust_kph &&
+                            latestData.condition === condition.text &&
+                            latestData.cloud_cover === cloud &&
+                            latestData.uv_index === uv
+                        ) {
+                            //console.log(`No changes in weather data for ${district}, ${province}. Skipping insert.`);
+                            continue; // ข้ามไปยังอำเภอต่อไป
+                        }
+                    }
+
+                    // ถ้าข้อมูลมีการเปลี่ยนแปลง ให้ทำการบันทึกข้อมูลใหม่
+                    const insertQuery = `INSERT INTO weather (province, district, temperature, humidity, wind_speed, gusts, condition, cloud_cover, uv_index, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`;
+                    await pool.query(insertQuery, [
+                        province,
+                        district,
+                        temp_c,
+                        humidity,
+                        wind_kph,
+                        gust_kph,
+                        condition.text,
+                        cloud,
+                        uv
+                    ]);
+
+
+                    const today = new Date();
+                    const optionsDate = { year: 'numeric', month: 'long', day: 'numeric' };
+                    const optionsTime = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+                    
+                    const formattedDate = today.toLocaleDateString('th-TH', optionsDate); // สำหรับวันที่
+                    const formattedTime = today.toLocaleTimeString('th-TH', optionsTime); // สำหรับเวลา
+                    
+                    console.log(`[${formattedDate} ${formattedTime}] Weather data for ${district} in ${province} updated successfully.`);
+
+
+                    //console.log(`Weather data for ${district} in ${province} updated successfully.`);
+
+
+
+                    // ส่งข้อมูลที่บันทึกใหม่ไปยัง WebSocket
+                    broadcastWeatherUpdate({ province, district, temp_c, humidity, wind_kph, gust_kph, condition: condition.text, cloud, uv });
+                   //
+
+
+
+                } else {
+                    console.error(`Error fetching weather data for ${district}, ${province}:`, weatherData.error);
+                }
+            } catch (error) {
+                console.error('Error processing district:', district, error);
+            }
+        }
+    }
+};
+
+
+
+
+
+// ฟังก์ชันสำหรับส่งข้อมูล Weather Update ผ่าน WebSocket
+const clients = new Set();
+
+const broadcastWeatherUpdate = (data) => {
+    clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(data));
+        }
+    });
+};
+
+// สร้าง WebSocket Server
+const wss = new WebSocket.Server({ noServer: true });
+//const wss = new WebSocket.Server({ port: 5001 });
+//const wss = new WebSocket('ws://localhost:5001/');
+wss.on('connection', (ws) => {
+    clients.add(ws);
+    ws.on('close', () => {
+        clients.delete(ws);
+    });
+});
+
+// สร้าง HTTP server และเชื่อมต่อกับ WebSocket server
+const server = app.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
+});
+
+// อัพเดต WebSocket server ให้ทำงานร่วมกับ HTTP server
+server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
+});
+
+
+
+
+// เช็คการเชื่อมต่อกับ PostgreSQL
+checkConnection();
+
+// เส้นทางหลัก
+app.get('/', (req, res) => {
+    res.send('Weather API Server is running');
+});
+
+// เรียกใช้งานฟังก์ชัน fetchAndStoreWeatherData ทุก CHECK_INTERVAL
+setInterval(fetchAndStoreWeatherData, CHECK_INTERVAL);
+
+// เริ่มต้นเซิร์ฟเวอร์
+//app.listen(port, () => {
+//    console.log(`Server running at http://localhost:${port}`);
+//});
+
+####
+app.jsx
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+
+
+import { Line } from 'react-chartjs-2';
+import { Chart as ChartJS, LineElement, PointElement, LinearScale, Title, Tooltip, Legend } from 'chart.js';
+ChartJS.register(LineElement, PointElement, LinearScale, Title, Tooltip, Legend);
+
+
+
+
+function App() {
+  const [provinces, setProvinces] = useState([]);
+  const [selectedProvince, setSelectedProvince] = useState('');
+  const [districts, setDistricts] = useState([]);
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [weatherHistory, setWeatherHistory] = useState([]);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [error, setError] = useState('');
+  const [ws, setWs] = useState(null);
+
+
+  //// Fetch provinces when the component mounts
+  //useEffect(() => {
+  //  fetchProvinces();
+  //}, []);
+
+  //// Fetch provinces when the component mounts
+  //useEffect(() => {
+  //  fetchProvinces();
+  //  const websocket = new WebSocket('ws://localhost:5001'); // URL ของ WebSocket
+  //  setWs(websocket);
+
+  //  websocket.onmessage = (event) => {
+  //    const newData = JSON.parse(event.data);
+  //    setWeatherHistory((prevData) => [...prevData, newData]); // เพิ่มข้อมูลใหม่เข้าไปในตาราง
+  //  };
+
+  //  return () => {
+  //    websocket.close(); // ปิดการเชื่อมต่อ WebSocket เมื่อคอมโพเนนต์ถูกลบ
+  //  };
+  //}, []);
+  //// Fetch provinces when the component mounts
+  //useEffect(() => {
+  //  fetchProvinces();
+  //  const websocket = new WebSocket('ws://localhost:5001'); // URL ของ WebSocket
+  //  setWs(websocket);
+
+  //  websocket.onmessage = (event) => {
+  //    const newData = JSON.parse(event.data);
+  //    console.log('New data received:', newData); // เพิ่มบรรทัดนี้เพื่อดูข้อมูลที่ได้รับ
+  //    // ตรวจสอบว่ามีการเลือกเขต (district) หรือไม่ก่อนเพิ่มข้อมูลใหม่
+  //    if (selectedDistrict) {
+  //      setWeatherHistory((prevData) => [...prevData, newData]); // เพิ่มข้อมูลใหม่เข้าไปในตาราง
+  //    }
+  //  };
+
+  //  return () => {
+  //    websocket.close(); // ปิดการเชื่อมต่อ WebSocket เมื่อคอมโพเนนต์ถูกลบ
+  //  };
+  //}, [selectedDistrict]); // เพิ่ม selectedDistrict เป็น dependency
+
+
+
+
+
+  useEffect(() => {
+    fetchProvinces();
+    const websocket = new WebSocket('ws://localhost:5002'); // URL ของ WebSocket
+    setWs(websocket);
+
+    websocket.onmessage = (event) => {
+        const newData = JSON.parse(event.data);
+        console.log('New data received:', newData); // ดูข้อมูลที่ได้รับจาก WebSocket
+        if (selectedDistrict) {
+            setWeatherHistory((prevData) => [...prevData, newData]); // เพิ่มข้อมูลใหม่เข้าไปในตาราง
+        }
+    };
+
+    return () => {
+        websocket.close(); // ปิดการเชื่อมต่อ WebSocket เมื่อคอมโพเนนต์ถูกลบ
+    };
+}, [selectedDistrict]);
+
+  
+
+
+
+
+
+  const fetchProvinces = async () => {
+    try {
+      const response = await fetch('http://localhost:5002/api/provinces');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setProvinces(data);
+    } catch (error) {
+      setError('Error fetching provinces: ' + error.message);
+    }
+  };
+
+  // Fetch districts when a province is selected
+  useEffect(() => {
+    if (selectedProvince) {
+      fetchDistricts(selectedProvince);
+    }
+  }, [selectedProvince]);
+
+  const fetchDistricts = async (province) => {
+    try {
+      const response = await fetch(`http://localhost:5002/api/districts/${province}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setDistricts(data);
+    } catch (error) {
+      setError('Error fetching districts: ' + error.message);
+    }
+  };
+
+  // Fetch weather history when a district is selected
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetchWeatherHistory(selectedDistrict);
+    }
+  }, [selectedDistrict]);
+
+  const fetchWeatherHistory = async (district) => {
+    setLoadingWeather(true);
+    try {
+      const response = await fetch(`http://localhost:5002/api/weather_history/${district}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setWeatherHistory(data);
+    } catch (error) {
+      setError('Error fetching weather history: ' + error.message);
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
+
+
+
+
+
+
+
+
+
+  return (
+    <div className="App">
+        <a href="https://www.weatherapi.com/" title="Free Weather API">
+            <img src="//cdn.weatherapi.com/v4/images/weatherapi_logo.png" alt="Weather data by WeatherAPI.com" border="0" style={{ position: 'absolute', top: '10px', left: '10px' }} />
+        </a>
+        <h1 style={{ marginTop: '50px' }}>Weather History</h1> 
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {/* Province Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="province">Select Province:</label>
+        <select
+          id="province"
+          value={selectedProvince}
+          onChange={(e) => {
+            setSelectedProvince(e.target.value);
+            setSelectedDistrict('');
+            setWeatherHistory([]);
+          }}
+        >
+          <option value="">-- Select Province --</option>
+          {provinces.map((province, index) => (
+            <option key={index} value={province[0]}>
+              {province[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* District Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="district">Select District:</label>
+        <select
+          id="district"
+          value={selectedDistrict}
+          onChange={(e) => setSelectedDistrict(e.target.value)}
+          disabled={!selectedProvince}
+        >
+          <option value="">-- Select District --</option>
+          {districts.map((district, index) => (
+            <option key={index} value={district[0]}>
+              {district[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+
+
+
+      {/* Weather History Table */}
+      {selectedDistrict && (
+        <div className="weather-history-container">
+          <h2>Weather History for {selectedDistrict}</h2>
+          {loadingWeather ? (
+            <p>Loading...</p>
+          ) : (
+            <table className="weather-table">
+              <thead>
+                <tr>
+                <th>วันที่</th>
+                <th>อุณหภูมิ (°C)</th>
+                <th>ความชื้น (%)</th>
+                <th>ความเร็วลม (m/s)</th>
+                <th>ลมกระโชก (m/s)</th>
+                <th>สภาพอากาศ</th>
+                <th>การปกคลุมของเมฆ (%)</th>
+                <th>ดัชนี UV</th>
+                  
+                </tr>
+              </thead>
+              <tbody>
+                {weatherHistory.map((record, index) => (
+                  <tr key={index}>
+                    <td>{record[7]}</td>
+                    <td>{record[0]}</td>
+                    <td>{record[1]}</td>
+                    <td>{record[2]}</td>
+                    <td>{record[3]}</td>
+                    <td>{record[4]}</td>
+                    <td>{record[5]}</td>
+                    <td>{record[6]}</td>
+                    
+                  </tr>
+                ))}
+
+
+
+
+
+
+                
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+
+
+
+
+
+
+
+          
+       
+  
+
+
+
+
+
+    </div>
+  );
+
+
+
+
+}
+
+export default App;
+
+
+###
+
+####App.jsx ต่อ websocketได้แล้ว
+
+import React, { useState, useEffect } from 'react';
+import './App.css';
+import { Line } from 'react-chartjs-2';
+import { Chart as ChartJS, LineElement, PointElement, LinearScale, Title, Tooltip, Legend } from 'chart.js';
+
+ChartJS.register(LineElement, PointElement, LinearScale, Title, Tooltip, Legend);
+
+function App() {
+  const [provinces, setProvinces] = useState([]);
+  const [selectedProvince, setSelectedProvince] = useState('');
+  const [districts, setDistricts] = useState([]);
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [weatherHistory, setWeatherHistory] = useState([]);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [error, setError] = useState('');
+  const [ws, setWs] = useState(null);
+
+  useEffect(() => {
+    fetchProvinces();
+    const websocket = new WebSocket('ws://localhost:5001'); // URL ของ WebSocket
+    setWs(websocket);
+
+    websocket.onmessage = (event) => {
+      const newData = JSON.parse(event.data);
+      console.log('New data received:', newData);
+      if (selectedDistrict) {
+        setWeatherHistory((prevData) => [...prevData, newData]);
+      }
+    };
+
+    return () => {
+      websocket.close(); // ปิดการเชื่อมต่อ WebSocket เมื่อคอมโพเนนต์ถูกลบ
+    };
+  }, [selectedDistrict]);
+
+  const fetchProvinces = async () => {
+    try {
+      const response = await fetch('http://localhost:5002/api/provinces');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setProvinces(data);
+    } catch (error) {
+      setError('Error fetching provinces: ' + error.message);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProvince) {
+      fetchDistricts(selectedProvince);
+    }
+  }, [selectedProvince]);
+
+  const fetchDistricts = async (province) => {
+    try {
+      const response = await fetch(`http://localhost:5002/api/districts/${province}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setDistricts(data);
+    } catch (error) {
+      setError('Error fetching districts: ' + error.message);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetchWeatherHistory(selectedDistrict);
+    }
+  }, [selectedDistrict]);
+
+  const fetchWeatherHistory = async (district) => {
+    setLoadingWeather(true);
+    try {
+      const response = await fetch(`http://localhost:5002/api/weather_history/${district}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setWeatherHistory(data);
+    } catch (error) {
+      setError('Error fetching weather history: ' + error.message);
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
+
+  return (
+    <div className="App">
+      <a href="https://www.weatherapi.com/" title="Free Weather API">
+        <img src="//cdn.weatherapi.com/v4/images/weatherapi_logo.png" alt="Weather data by WeatherAPI.com" border="0" style={{ position: 'absolute', top: '10px', left: '10px' }} />
+      </a>
+      <h1 style={{ marginTop: '50px' }}>Weather History</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {/* Province Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="province">Select Province:</label>
+        <select
+          id="province"
+          value={selectedProvince}
+          onChange={(e) => {
+            setSelectedProvince(e.target.value);
+            setSelectedDistrict('');
+            setWeatherHistory([]);
+          }}
+        >
+          <option value="">-- Select Province --</option>
+          {provinces.map((province, index) => (
+            <option key={index} value={province[0]}>
+              {province[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* District Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="district">Select District:</label>
+        <select
+          id="district"
+          value={selectedDistrict}
+          onChange={(e) => setSelectedDistrict(e.target.value)}
+          disabled={!selectedProvince}
+        >
+          <option value="">-- Select District --</option>
+          {districts.map((district, index) => (
+            <option key={index} value={district[0]}>
+              {district[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Weather History Table */}
+      {selectedDistrict && (
+        <div className="weather-history-container">
+          <h2>Weather History for {selectedDistrict}</h2>
+          {loadingWeather ? (
+            <p>Loading...</p>
+          ) : (
+            <table className="weather-table">
+              <thead>
+                <tr>
+                  <th>วันที่</th>
+                  <th>อุณหภูมิ (°C)</th>
+                  <th>ความชื้น (%)</th>
+                  <th>ความเร็วลม (m/s)</th>
+                  <th>ลมกระโชก (m/s)</th>
+                  <th>สภาพอากาศ</th>
+                  <th>การปกคลุมของเมฆ (%)</th>
+                  <th>ดัชนี UV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {weatherHistory.map((record, index) => (
+                  <tr key={index}>
+                    <td>{record[7]}</td>
+                    <td>{record[0]}</td>
+                    <td>{record[1]}</td>
+                    <td>{record[2]}</td>
+                    <td>{record[3]}</td>
+                    <td>{record[4]}</td>
+                    <td>{record[5]}</td>
+                    <td>{record[6]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
+
+
+#### App.py รันใช้ได้
+from flask import Flask, jsonify, request
+from flask_cors import CORS  # เพิ่มการนำเข้า
+import psycopg2
+
+app = Flask(__name__)
+CORS(app) 
+def get_db_connection():
+    conn = psycopg2.connect(
+        host="localhost",
+        database="Weather",
+        user="weather",
+        password="weather"
+    )
+    return conn
+
+@app.route('/api/provinces', methods=['GET'])
+def get_provinces():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT DISTINCT province FROM weather order by province')
+    provinces = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(provinces)
+
+@app.route('/api/districts/<province>', methods=['GET'])
+def get_districts(province):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT DISTINCT district FROM weather WHERE province = %s ORDER BY district', (province,))
+
+    districts = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(districts)
+
+@app.route('/api/weather_history/<district>', methods=['GET'])
+def get_weather_history(district):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''SELECT temperature, humidity, wind_speed, gusts, condition, cloud_cover, uv_index, created_at 
+                   FROM weather 
+                   WHERE district = %s ORDER BY created_at DESC''', (district,))
+    weather_history = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify(weather_history)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5002)
+
+####
+app.jsx ใช้ได้
+import React, { useState, useEffect } from 'react';
+import './App.css';
+import { Line } from 'react-chartjs-2';
+import { Chart as ChartJS, LineElement, PointElement, LinearScale, Title, Tooltip, Legend } from 'chart.js';
+
+ChartJS.register(LineElement, PointElement, LinearScale, Title, Tooltip, Legend);
+
+function App() {
+  const [provinces, setProvinces] = useState([]);
+  const [selectedProvince, setSelectedProvince] = useState('');
+  const [districts, setDistricts] = useState([]);
+  const [selectedDistrict, setSelectedDistrict] = useState('');
+  const [weatherHistory, setWeatherHistory] = useState([]);
+  const [loadingWeather, setLoadingWeather] = useState(false);
+  const [error, setError] = useState('');
+  const [ws, setWs] = useState(null);
+
+
+
+  //// ใช้ได้
+  useEffect(() => {
+    fetchProvinces();
+    const websocket = new WebSocket('ws://localhost:5001'); // URL ของ WebSocket
+    setWs(websocket);
+
+    websocket.onmessage = (event) => {
+      const newData = JSON.parse(event.data);
+      console.log('New data received:', newData);
+
+    //// ตรวจสอบว่า newData มีข้อมูลที่ตรงกับ selectedDistrict หรือไม่
+    if (newData.district.trim() === selectedDistrict.trim()) {
+      console.log('อำเภอเข้าตรงกัน');
+      fetchWeatherHistory(selectedDistrict);  // เรียกใช้ฟังก์ชันนี้เมื่อมีข้อมูลใหม่จาก WebSocket
+    }
+  };
+    return () => {
+      websocket.close(); // ปิดการเชื่อมต่อ WebSocket เมื่อคอมโพเนนต์ถูกลบ
+    };
+  }, [selectedDistrict]);
+//weatherHistory
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const fetchProvinces = async () => {
+    try {
+      const response = await fetch('http://localhost:5002/api/provinces');
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setProvinces(data);
+    } catch (error) {
+      setError('Error fetching provinces: ' + error.message);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProvince) {
+      fetchDistricts(selectedProvince);
+    }
+  }, [selectedProvince]);
+
+  const fetchDistricts = async (province) => {
+    try {
+      const response = await fetch(`http://localhost:5002/api/districts/${province}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setDistricts(data);
+    } catch (error) {
+      setError('Error fetching districts: ' + error.message);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedDistrict) {
+      fetchWeatherHistory(selectedDistrict);
+      
+    }
+  }, [selectedDistrict]);
+
+  const fetchWeatherHistory = async (district) => {
+    setLoadingWeather(true);
+    try {
+      const response = await fetch(`http://localhost:5002/api/weather_history/${district}`);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      setWeatherHistory(data);
+    } catch (error) {
+      setError('Error fetching weather history: ' + error.message);
+    } finally {
+      setLoadingWeather(false);
+    }
+  };
+
+  return (
+    <div className="App">
+      <a href="https://www.weatherapi.com/" title="Free Weather API">
+        <img src="//cdn.weatherapi.com/v4/images/weatherapi_logo.png" alt="Weather data by WeatherAPI.com" border="0" style={{ position: 'absolute', top: '10px', left: '10px' }} />
+      </a>
+      <h1 style={{ marginTop: '50px' }}>Weather History</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      {/* Province Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="province">Select Province:</label>
+        <select
+          id="province"
+          value={selectedProvince}
+          onChange={(e) => {
+            setSelectedProvince(e.target.value);
+            setSelectedDistrict('');
+            setWeatherHistory([]);
+          }}
+        >
+          <option value="">-- Select Province --</option>
+          {provinces.map((province, index) => (
+            <option key={index} value={province[0]}>
+              {province[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* District Dropdown */}
+      <div className="dropdown-container">
+        <label htmlFor="district">Select District:</label>
+        <select
+          id="district"
+          value={selectedDistrict}
+          onChange={(e) => setSelectedDistrict(e.target.value)}
+          disabled={!selectedProvince}
+        >
+          <option value="">-- Select District --</option>
+          {districts.map((district, index) => (
+            <option key={index} value={district[0]}>
+              {district[0]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Weather History Table */}
+      {selectedDistrict && (
+        <div className="weather-history-container">
+          <h2>Weather History for {selectedDistrict}</h2>
+          {loadingWeather ? (
+            <p>Loading...</p>
+          ) : (
+            <table className="weather-table">
+              <thead>
+                <tr>
+                  <th>วันที่</th>
+                  <th>อุณหภูมิ (°C)</th>
+                  <th>ความชื้น (%)</th>
+                  <th>ความเร็วลม (m/s)</th>
+                  <th>ลมกระโชก (m/s)</th>
+                  <th>สภาพอากาศ</th>
+                  <th>การปกคลุมของเมฆ (%)</th>
+                  <th>ดัชนี UV</th>
+                </tr>
+              </thead>
+              <tbody>
+                {weatherHistory.map((record, index) => (
+                  //<tr key={index}>
+                  <tr key={record.created_at}> {/* ใช้ค่าที่ไม่ซ้ำกัน */}
+                    <td>{record[7]}</td>
+                    <td>{record[0]}</td>
+                    <td>{record[1]}</td>
+                    <td>{record[2]}</td>
+                    <td>{record[3]}</td>
+                    <td>{record[4]}</td>
+                    <td>{record[5]}</td>
+                    <td>{record[6]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default App;
+
+
+####
+python App.py
+bun run server.js
+npm run dev

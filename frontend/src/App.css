@@ -1,0 +1,155 @@
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%; /* ความสูงเต็ม */
+  overflow-y: auto; /* ให้สามารถเลื่อนลงได้ */
+  overflow-x: auto;
+  background-color: #f0f0f0; /* สีพื้นหลัง */
+}
+
+.App {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+  background-color: #f0f8ff;
+  border-radius: 0; /* ลบมุมโค้ง */
+  box-shadow: none; /* ลบเงา */
+
+  width: 100vw; /* กว้างเต็มหน้าจอ */
+  height: 100vh; /* สูงเต็มหน้าจอ */
+  box-sizing: border-box; /* รวม padding ไว้ในขนาด */
+
+
+  
+}
+
+h1 {
+  text-align: center;
+  color: #333; /* สีตัวอักษร */
+  margin-bottom: 20px; /* เพิ่มช่องว่างด้านล่าง */
+}
+
+
+.dropdown-container {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%; /* เต็มความกว้าง */
+}
+
+.dropdown-container label {
+  font-size: 18px; /* ขนาดฟอนต์ใหญ่ขึ้น */
+  margin-bottom: 10px; /* เพิ่มช่องว่างด้านล่าง */
+  color: #333; /* สีตัวอักษร */
+}
+
+.dropdown-container select {
+  padding: 12px;
+  font-size: 16px;
+  width: 80%; /* ขยายเต็ม 80% ของหน้าจอ */
+  max-width: 600px; /* ขนาดสูงสุด */
+  margin-bottom: 10px;
+  border: 2px solid #66b3ff; /* สีขอบที่เข้มขึ้น */
+  border-radius: 6px; /* มุมโค้งมากขึ้น */
+  background-color: #fff; /* สีพื้นหลัง */
+  transition: border-color 0.3s, background-color 0.3s; /* เปลี่ยนสีเมื่อมีการโฟกัส */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* เงา */
+}
+
+.dropdown-container select:focus {
+  border-color: #007bff; /* สีขอบเมื่อโฟกัส */
+  outline: none; /* ไม่แสดงเส้นขอบ */
+  background-color: #e6f7ff; /* เปลี่ยนสีพื้นหลังเมื่อโฟกัส */
+}
+
+.weather-history-container {
+  margin-top: 30px;
+  text-align: center;
+  overflow-x: auto; /* เพิ่มให้เลื่อนได้ซ้ายขวา */
+}
+
+.weather-table {
+  width: 90%; /* ลดขนาดตารางเล็กน้อยให้เหลือ 90% ของหน้าจอ */
+  border-collapse: collapse;
+  margin-top: 10px;
+  background-color: #fff; /* สีพื้นหลังของตาราง */
+  border-radius: 8px; /* มุมโค้ง */
+  overflow: hidden; /* ซ่อนมุมที่โค้ง */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); /* เงา */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.weather-table th,
+.weather-table td {
+  border: 1px solid #ddd;
+  padding: 12px;
+  text-align: center;
+}
+
+.weather-table th {
+  background-color: #66b3ff; /* สีพื้นหลังของหัวตาราง */
+  color: #fff; /* สีตัวอักษร */
+}
+
+.weather-table tr:nth-child(even) {
+  background-color: #f9f9f9; /* สีพื้นหลังของแถวคู่ */
+}
+
+.weather-table tr:hover {
+  background-color: #e0f7fa; /* สีพื้นหลังเมื่อโฮเวอร์ */
+}
+
+.chart-container {
+  width: 100%;
+  height: 400px;
+  margin-top: 30px;
+}
+
+/* Media Queries สำหรับหน้าจอมือถือ */
+@media (max-width: 768px) {
+  .dropdown-container select {
+    width: 100%; /* ขยายเต็มหน้าจอมือถือ */
+  }
+
+  .weather-table th,
+  .weather-table td {
+    padding: 8px; /* ลด padding สำหรับหน้าจอเล็ก */
+  }
+}
+
+.query-result-table {
+  width: 90%; /* ความกว้างของตาราง */
+  margin: 0 auto; /* จัดกลาง */
+  border-collapse: collapse; /* รวมขอบ */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); /* เงา */
+  background-color: #fff; /* สีพื้นหลังของตาราง */
+}
+
+.query-result-table th {
+  background-color: #66b3ff; /* สีพื้นหลังของหัวตาราง */
+  color: #fff; /* สีของตัวอักษร */
+  padding: 12px; /* ช่องว่างภายใน */
+  text-align: center; /* จัดกลาง */
+  font-weight: bold; /* หนักตัว */
+}
+
+.query-result-table td {
+  padding: 12px; /* ช่องว่างภายใน */
+  border: 1px solid #ddd; /* ขอบ */
+  text-align: center; /* จัดกลาง */
+  transition: background-color 0.3s, color 0.3s; /* การเปลี่ยนสี */
+}
+
+/* ระบายสีแถวสลับกัน */
+.query-result-table tr:nth-child(even) {
+  background-color: #f9f9f9; /* สีพื้นหลังของแถวคู่ */
+}
+
+.query-result-table tr:hover {
+  background-color: #e0f7fa; /* สีพื้นหลังเมื่อเมาส์ชี้ */
+}
+
+.query-result-table td:hover {
+  color: #007bff; /* สีของตัวอักษรเมื่อเมาส์ชี้ที่เซลล์ */
+}
