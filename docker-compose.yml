@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -17,7 +15,7 @@ services:
 
   node_server:  # เพิ่ม Node.js server
     build:
-      context: ./node_server  # ที่อยู่โฟลเดอร์ที่เก็บ Dockerfile ของ Node.js
+      context: ./node_server  # ที่อยู่โฟลเดอร์ที่เก็บ Dockerfile ของ Node.js server
     ports:
       - "5001:5001"  # ใช้พอร์ต 5001 สำหรับ Node.js server
 
