@@ -2,24 +2,50 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import psycopg2
 import requests
-from dotenv import load_dotenv
-import os
+#from dotenv import load_dotenv
+#import os
 
 app = Flask(__name__)
 CORS(app)
 
-load_dotenv('../config-service/.env')
+# URL ของ server.js ที่เราสร้าง API ไว้สำหรับดึง API Key
+CONFIG_SERVICE_URL = "http://localhost:5001/api/config"  # เปลี่ยนพอร์ตตามที่ server.js ใช้
 
-API_KEY = os.getenv('WEATHER_API_KEY')  # เข้าถึง API Key
+def get_config():
+    try:
+        # เรียก API ที่ server.js เพื่อดึงข้อมูลการตั้งค่าทั้งหมด
+        response = requests.get(CONFIG_SERVICE_URL)
+        response.raise_for_status()  # ตรวจสอบสถานะการตอบกลับ (จะยกเลิกถ้าเกิดข้อผิดพลาด)
+               
+        # แยกข้อมูลที่ได้จาก JSON
+        data = response.json()
+        
+        return data  # คืนค่าข้อมูลทั้งหมดที่ได้จาก API response
+    except requests.exceptions.RequestException as e:
+        print(f"Error retrieving config: {e}")
+        return None
+
+# ดึงข้อมูลจาก API
+config = get_config()
+
+if config:
+    # ดึงข้อมูลที่จำเป็นจาก config
+    WEATHER_API_KEY = config.get("weatherApiKey")
+    db_host = config.get("dbHost")
+    db_name = config.get("dbName")
+    db_user = config.get("dbUser")
+    db_password = config.get("dbPassword")
+    
+    
 
 def get_db_connection():
     try:
         # ดึงค่าจาก environment variables
-        
-        db_host = os.getenv("DB_HOST")
-        db_name = os.getenv("DB_NAME")
-        db_user = os.getenv("DB_USER")
-        db_password = os.getenv("DB_PASSWORD") 
+        # ต้องเปลี่ยนเป็น Get API 
+        #db_host = os.getenv("DB_HOST")
+        #db_name = os.getenv("DB_NAME")
+        #db_user = os.getenv("DB_USER")
+        #db_password = os.getenv("DB_PASSWORD") 
         
         # ใช้ with statement เพื่อให้การเชื่อมต่อถูกปิดอัตโนมัติ
         with psycopg2.connect(
@@ -38,7 +64,7 @@ def get_db_connection():
 @app.route('/api/temperature/<province>', methods=['GET'])
 def get_temperature_by_province(province):
     # URL ของ Weather API (ตัวอย่าง)
-    weather_api_url = f"https://api.weatherapi.com/v1/current.json?key={API_KEY}&q={province}&aqi=yes"
+    weather_api_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={province}&aqi=yes"
     
     try:
         response = requests.get(weather_api_url)

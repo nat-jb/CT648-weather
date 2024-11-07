@@ -16,10 +16,19 @@ app.use(cors());  // เปิดให้ทุกโดเมนสามา�
 app.get('/api/config', (req, res) => {
     const googleApiKey = process.env.GOOGLE_API_KEY;
     const weatherApiKey = process.env.WEATHER_API_KEY;
+    // ดึงข้อมูลฐานข้อมูลจาก environment variables
+    const dbHost = process.env.DB_HOST;
+    const dbName = process.env.DB_NAME;
+    const dbUser = process.env.DB_USER;
+    const dbPassword = process.env.DB_PASSWORD;
 
     res.json({
         googleApiKey: googleApiKey,
-        weatherApiKey: weatherApiKey
+        weatherApiKey: weatherApiKey,
+        dbHost: dbHost,
+        dbName: dbName,
+        dbUser: dbUser,
+        dbPassword: dbPassword
     });
 });
 
