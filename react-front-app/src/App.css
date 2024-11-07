@@ -1,0 +1,140 @@
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow-y: auto; /* ปิด scroll bar */
+  background-color: #e9ecef; /* สีพื้นหลัง */
+  
+}
+
+.App {
+  height: 100vh; /* ใช้ความสูงเต็มที่ */
+  display: flex;
+  flex-direction: column;
+}
+
+.weather-credit {
+  padding-top: 10px;
+  padding-left: 10px;
+  margin-bottom: -10px; /* ลดระยะห่างระหว่างโลโก้กับหัวข้อ */
+  display: flex;
+  align-items: center; /* จัดให้โลโก้กับข้อความอยู่ในแนวเดียวกัน */
+}
+
+.weather-logo {
+  max-width: 50px; /* ปรับขนาดโลโก้ให้เล็กลง */
+  margin-right: 10px; /* เพิ่มช่องว่างระหว่างโลโก้กับข้อความ */
+  display: inline-block;
+  vertical-align: middle;
+}
+
+h1 {
+  color: #333;
+  font-size: 24px; /* ขนาดฟอนต์ที่คุณต้องการ */
+  margin: 20px 0; /* เพิ่มหรือลด margin ตามต้องการ */
+  text-align: center;
+}
+h1.text-center {
+  font-size: 2rem; /* ปรับขนาดฟอนต์ */
+  font-weight: 600; /* ปรับความหนาของฟอนต์ */
+  color: #343a40; /* สีเข้ม */
+  text-align: center; /* จัดกึ่งกลาง */
+  margin: 1rem 0; /* เพิ่มระยะห่างด้านบนและล่าง */
+  padding: 0.5rem; /* เพิ่มระยะห่างภายใน */
+  text-transform: uppercase; /* เปลี่ยนให้เป็นตัวพิมพ์ใหญ่ทั้งหมด */
+  letter-spacing: 1px; /* เพิ่มระยะห่างระหว่างตัวอักษร */
+  border-bottom: 2px solid #007bff; /* เพิ่มเส้นขอบล่าง */
+  transition: color 0.3s ease; /* เพิ่มการเปลี่ยนแปลงสี */
+}
+
+h1.text-center:hover {
+  color: #007bff; /* เปลี่ยนสีเมื่อวางเมาส์ */
+}
+
+.map-container {
+  height:  calc(100vh - 100px); /* หักความสูงของคอนเทนเนอร์อื่น ๆ ถ้ามี */
+  width: 100%; /* ความกว้างเต็มหน้าจอ */
+  position: relative; /* กำหนดตำแหน่งแบบ relative */
+
+}
+.google-map {
+  width: 100%; /* กว้างเต็มที่ */
+  height: 100%; /* สูงเต็มที่ */
+}
+
+/* Media Queries สำหรับหน้าจอมือถือ */
+@media (max-width: 768px) {
+  .table {
+    font-size: 14px; /* ปรับขนาดตัวอักษรสำหรับมือถือ */
+  }
+
+  .data-container {
+    padding: 0.5rem; /* ลดการ padding สำหรับมือถือ */
+  }
+
+  th, td {
+    padding: 8px; /* ลดการ padding สำหรับ th และ td */
+    word-wrap: break-word; /* ให้ข้อความยาวถูกตัดบรรทัด */
+  }
+}
+
+@media (min-width: 768px) {
+  h1 {
+    font-size: 18px; /* ขนาดฟอนต์ทั่วไป */
+  }
+}
+
+.tabs {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.3rem;
+  
+}
+
+.tabs button {
+  padding: 5px 15px; /* ลดความสูงของปุ่ม */
+  margin: 0 5px;
+  border: none;
+  cursor: pointer;
+  background-color: #eee;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+  font-size: 14px; /* ลดขนาดฟอนต์เล็กน้อย */
+}
+
+.tabs button.active {
+  background-color: #1a3d7c; /* เปลี่ยนเป็นสีน้ำเงินเข้ม */
+  color: #fff;
+}
+
+.tab-content {
+  padding: 5px;
+  background-color: #006ec8;  /* สีพื้นหลัง */
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  
+  /* กำหนดพื้นที่สูงสุดและการแสดง scrollbar */
+  max-height: auto; /* กำหนดความสูงสูงสุด */
+  overflow-y: auto; /* เปิดให้เลื่อนในแนวตั้ง */
+
+}
+
+.data-container {
+  max-height: 100%; /* ปรับความสูงสูงสุด */
+  overflow-y: auto; /* ทำให้มี scrollbar แนวตั้ง */
+  overflow-x: auto;
+  padding: 1rem; /* ระยะห่างภายใน */
+  border: 1px solid #ccc; /* ขอบของกล่อง */
+  border-radius: 5px; /* มุมกลม */
+  background-color: #f8f9fa; /* สีพื้นหลัง  */
+  width: 100%;
+  
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* ป้องกันไม่ให้เกิด scrollbar */
+}
