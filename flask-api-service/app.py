@@ -2,8 +2,6 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import psycopg2
 import requests
-#from dotenv import load_dotenv
-#import os
 
 app = Flask(__name__)
 CORS(app)
@@ -40,12 +38,6 @@ if config:
 
 def get_db_connection():
     try:
-        # ดึงค่าจาก environment variables
-        # ต้องเปลี่ยนเป็น Get API 
-        #db_host = os.getenv("DB_HOST")
-        #db_name = os.getenv("DB_NAME")
-        #db_user = os.getenv("DB_USER")
-        #db_password = os.getenv("DB_PASSWORD") 
         
         # ใช้ with statement เพื่อให้การเชื่อมต่อถูกปิดอัตโนมัติ
         with psycopg2.connect(
