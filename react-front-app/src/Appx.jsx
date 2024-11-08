@@ -311,11 +311,8 @@ function App() {
         
 
         {activeTab === 'data' && (
-
-          <div className="data-container" style={{ overflowX: 'auto', width: '100%', maxWidth: '100%' }}>
-            <table className="table" style={{ width: '100%', tableLayout: 'fixed' }}>
-
-
+  <div className="data-container">
+    <table className="table">
       <thead style={{ backgroundColor: '#007bff', color: '#ffffff' }}>
         <tr style={{ position: 'sticky', top: 0, zIndex: 10 }}>
           <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Province</th>
@@ -330,8 +327,7 @@ function App() {
       </thead>
 
 
-
-<tbody>
+      <tbody>
   {temperatureData.length > 0 ? (
     temperatureData.map((data, index) => (
       <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#e0f7fa' : '#ffffff' }}>
@@ -377,16 +373,16 @@ function App() {
       </td>
     </tr>
   )}
-</tbody>
+      </tbody>
+
+          
 
 
+    </table>
+  </div>
+)}
 
 
-	        </table>
-          </div>
-
-
-        )}
 
         
         {activeTab === 'about' && (

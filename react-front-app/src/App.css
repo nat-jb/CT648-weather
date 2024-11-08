@@ -62,27 +62,195 @@ h1.text-center:hover {
   height: 100%; /* สูงเต็มที่ */
 }
 
-/* Media Queries สำหรับหน้าจอมือถือ */
+
+/* สำหรับหน้าจอมือถือ */
 @media (max-width: 768px) {
-  .table {
-    font-size: 14px; /* ปรับขนาดตัวอักษรสำหรับมือถือ */
+  .data-container {
+    padding: 0.5rem;  /* ลด padding สำหรับหน้าจอเล็ก */
   }
 
-  .data-container {
-    padding: 0.5rem; /* ลดการ padding สำหรับมือถือ */
+  .table {
+    font-size: 14px;  /* ลดขนาดฟอนต์ให้พอเหมาะกับมือถือ */
+    width: 100%; /* ให้ตารางเต็มความกว้างหน้าจอ */
   }
 
   th, td {
-    padding: 8px; /* ลดการ padding สำหรับ th และ td */
-    word-wrap: break-word; /* ให้ข้อความยาวถูกตัดบรรทัด */
+    padding: 8px; /* ลด padding สำหรับมือถือ */
+    display: block;
+    width: 100%;
+    text-align: left;
+    word-wrap: break-word;
+    box-sizing: border-box;
+  }
+
+  /* ซ่อน header ของตาราง */
+  .table thead {
+    display: none;
+  }
+
+  /* แถวข้อมูลแต่ละแถวจะยืดเต็มหน้าจอ */
+  .table tr {
+    display: block;
+    margin-bottom: 0.5rem; /* ลดระยะห่างระหว่างแถว */
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+  }
+
+  /* แสดงชื่อคอลัมน์และข้อมูลในบรรทัดเดียวกัน */
+  .table td::before {
+    content: attr(data-label);
+    font-weight: bold;
+    color: #007bff;
+    display: inline-block;
+    width: 40%;
+    margin-right: 6px;
+  }
+
+  /* ปรับข้อมูลให้ชิดกันและลดความสูงของแต่ละช่อง */
+  .table td {
+    display: flex;
+    align-items: center;
+    padding-left: 10px;
   }
 }
 
+
+
+/* ปรับขนาดฟอนต์บนหน้าจอที่กว้างกว่า 768px */
+/* สำหรับหน้าจอคอมพิวเตอร์ */
 @media (min-width: 768px) {
-  h1 {
-    font-size: 18px; /* ขนาดฟอนต์ทั่วไป */
+  .table {
+    table-layout: fixed; /* ใช้ table-layout: fixed เพื่อให้ความกว้างคอลัมน์คงที่ */
+    width: 100%; /* ให้ตารางขยายเต็มความกว้าง */
+    border-collapse: collapse; /* รวมเส้นขอบของตาราง */
+  }
+
+  th, td {
+    padding: 6px 8px; /* ลด padding ให้แคบลง */
+    text-align: left;
+    word-wrap: break-word;
+    white-space: normal;
+    line-height: 1.1; /* ลดระยะห่างระหว่างบรรทัดในแถว */
+    font-size: 18px; /* เพิ่มขนาดฟอนต์ */
+    
+  }
+
+  /* ลดระยะห่างระหว่างแถว */
+  tr {
+    height: 28px; /* กำหนดความสูงของแถวให้แคบลง */
+  }
+
+  /* กำหนดความกว้างของแต่ละคอลัมน์ */
+  th:nth-child(1), td:nth-child(1) {
+    width: 18%;  /* ปรับความกว้างคอลัมน์ที่ 1 */
+  }
+
+  th:nth-child(2), td:nth-child(2) {
+    width: 22%;  /* ปรับความกว้างคอลัมน์ที่ 2 */
+  }
+
+  th:nth-child(3), td:nth-child(3) {
+    width: 12%;  /* ปรับความกว้างคอลัมน์ที่ 3 */
+  }
+
+  th:nth-child(4), td:nth-child(4) {
+    width: 12%;  /* ปรับความกว้างคอลัมน์ที่ 4 */
+  }
+
+  th:nth-child(5), td:nth-child(5) {
+    width: 8%;   /* ปรับความกว้างคอลัมน์ที่ 5 */
+  }
+
+  th:nth-child(6), td:nth-child(6) {
+    width: 8%;   /* ปรับความกว้างคอลัมน์ที่ 6 */
+  }
+
+  th:nth-child(7), td:nth-child(7) {
+    width: 8%;   /* ปรับความกว้างคอลัมน์ที่ 7 */
+  }
+
+  th:nth-child(8), td:nth-child(8) {
+    width: 12%;  /* ปรับความกว้างคอลัมน์ที่ 8 */
   }
 }
+
+
+
+
+
+/* มือถือ 768px */
+@media (max-width: 768px) {
+  .weather-credit {
+    display: none; /* ซ่อนโลโก้บนหน้าจอเล็ก */
+  }
+
+  h1 {
+    font-size: 28px; /* เพิ่มขนาดฟอนต์สำหรับหน้าจอเล็ก */
+  }
+
+  .table {
+    font-size: 18px; /* เพิ่มขนาดฟอนต์ในตารางให้ใหญ่ขึ้น */
+  }
+
+  th, td {
+    padding: 8px 10px; /* ลด padding เพื่อให้ความสูงของแถวแคบลง */
+    text-align: left;
+    word-wrap: break-word;
+    line-height: 1.2; /* ลดระยะห่างระหว่างบรรทัดในแถว */
+  }
+
+  /* ซ่อน header ของตาราง */
+  .table thead {
+    display: none;
+  }
+
+  /* รูปแบบของแถวข้อมูล */
+  .table tr {
+    display: block;
+    margin-bottom: 0.3rem; /* ลดระยะห่างระหว่างแถว */
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+  }
+
+  /* แสดงชื่อคอลัมน์และข้อมูลในบรรทัดเดียวกัน */
+  .table td::before {
+    content: attr(data-label);
+    font-weight: bold;
+    color: #007bff;
+    display: inline-block;
+    width: 45%;
+    margin-right: 4px;
+  }
+
+  /* ปรับข้อมูลให้ชิดกันและลดความสูงของแต่ละช่อง */
+  .table td {
+    display: flex;
+    align-items: center;
+  }
+
+  /* ทำให้แถวที่เป็น Province มีสีพื้นหลังที่ดูหรูหรา */
+  .table td[data-label="Province"]:first-child {
+    background-color: #e0e0e0; /* สีพื้นหลังเทาอ่อน */
+    font-weight: bold; /* ทำให้ตัวหนังสือหนาขึ้น */
+    color: #333; /* สีตัวหนังสือเป็นสีเทาเข้ม */
+    padding: 12px 15px; /* เพิ่ม padding เล็กน้อยให้แถวดูเด่นขึ้น */
+    border-radius: 5px; /* มุมมน */
+  }
+
+  /* ทำให้แถว "Province" ใหม่โดดเด่นในแต่ละแถว */
+  .table tr:first-child td[data-label="Province"] {
+    background-color: #f1f1f1; /* สีพื้นหลังเทาอ่อน */
+    font-weight: bold;
+    color: #333; /* สีตัวหนังสือเข้ม */
+  }
+}
+
+
+
+
+
 
 .tabs {
   display: flex;
@@ -119,17 +287,41 @@ h1.text-center:hover {
 
 }
 
+
 .data-container {
-  max-height: 100%; /* ปรับความสูงสูงสุด */
-  overflow-y: auto; /* ทำให้มี scrollbar แนวตั้ง */
-  overflow-x: auto;
-  padding: 1rem; /* ระยะห่างภายใน */
-  border: 1px solid #ccc; /* ขอบของกล่อง */
-  border-radius: 5px; /* มุมกลม */
-  background-color: #f8f9fa; /* สีพื้นหลัง  */
   width: 100%;
-  
+  max-width: 100%;
+  padding: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background-color: #f8f9fa;
+  overflow-x: auto; /* เลื่อนในแนวนอนได้ */
 }
+
+.table {
+  width: 100%;
+  table-layout: fixed; /* ใช้การจัดขนาดแบบตายตัว */
+  border-collapse: collapse;
+}
+
+.table th, .table td {
+  padding: 12px;
+  text-align: left;
+  word-wrap: break-word; /* ข้อความยาวจะถูกตัด */
+  overflow: hidden; /* ซ่อนเนื้อหาที่ล้นออกมา */
+  text-overflow: ellipsis; /* แสดง ... เมื่อเนื้อหายาวเกิน */
+}
+
+.table th {
+  font-weight: bold;
+  background-color: #007bff;
+  color: #ffffff;
+}
+
+.table td {
+  background-color: #ffffff;
+}
+
 
 html, body {
   margin: 0;
