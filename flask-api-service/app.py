@@ -28,7 +28,7 @@ config = get_config()
 
 if config:
     # ดึงข้อมูลที่จำเป็นจาก config
-    WEATHER_API_KEY = config.get("weatherApiKey")
+    weather_api_key = config.get("weatherApiKey")
     db_host = config.get("dbHost")
     db_name = config.get("dbName")
     db_user = config.get("dbUser")
@@ -56,7 +56,7 @@ def get_db_connection():
 @app.route('/api/temperature/<province>', methods=['GET'])
 def get_temperature_by_province(province):
     # URL ของ Weather API (ตัวอย่าง)
-    weather_api_url = f"https://api.weatherapi.com/v1/current.json?key={WEATHER_API_KEY}&q={province}&aqi=yes"
+    weather_api_url = f"https://api.weatherapi.com/v1/current.json?key={weather_api_key}&q={province}&aqi=yes"
     
     try:
         response = requests.get(weather_api_url)

@@ -34,5 +34,5 @@ app.get('/api/config', (req, res) => {
 
 // เริ่มเซิร์ฟเวอร์
 app.listen(port, () => {
-    console.log(`Config Service is running at http://localhost:${port}`);
+    console.log(`Config Service is running at port:${port}`);
 });
