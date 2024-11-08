@@ -9,7 +9,8 @@ const GoogleMapComponent = ({ markers, center }) => {
   useEffect(() => {
     const fetchGoogleApiKey = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/config');
+        //const response = await fetch('http://localhost:5001/api/config');
+        const response = await fetch('http://localhost:5002/api/googlekey');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }

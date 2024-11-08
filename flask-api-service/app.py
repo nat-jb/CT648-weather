@@ -28,6 +28,7 @@ config = get_config()
 
 if config:
     # ดึงข้อมูลที่จำเป็นจาก config
+    google_api_key = config.get("googleApiKey")
     weather_api_key = config.get("weatherApiKey")
     db_host = config.get("dbHost")
     db_name = config.get("dbName")
@@ -51,6 +52,29 @@ def get_db_connection():
         # จัดการข้อผิดพลาดโดยการ log หรือแสดงผล
         print(f"Error connecting to the database: {e}")
         return None
+    
+
+@app.route('/api/googlekey', methods=['GET'])
+def get_api_key():
+    config = get_config()  # เรียกฟังก์ชัน get_config เพื่อดึงข้อมูลทั้งหมด
+    if config:
+        # ดึงค่า API key ต่างๆ จาก config
+        google_api_key = config.get("googleApiKey")
+
+        # ตรวจสอบว่า google_api_key มีค่าหรือไม่
+        if google_api_key:
+            print(f"/api/googlekey: {google_api_key}")
+            # ส่งค่าทั้งหมดในรูปแบบ JSON
+            return jsonify({
+                "googleApiKey": google_api_key
+            }), 200
+        else:
+            print("Google API Key not found in the config")
+            return jsonify({"error": "Google API Key not found"}), 404
+    else:
+        print("Failed to retrieve configuration")
+        return jsonify({"error": "Failed to retrieve configuration"}), 500
+
 
 
 @app.route('/api/temperature/<province>', methods=['GET'])
