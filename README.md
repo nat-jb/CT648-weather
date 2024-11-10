@@ -26,14 +26,27 @@ PostgreSQL จะใช้สำหรับจัดเก็บข้อมู
 โครงสร้างระบบงาน
 ![โครงสร้างระบบงาน](images/structure.jpg)
 
+
 พิกัดจังหวัด/อำเภอ และระดับสีอุณหภูมิ
 ![พิกัดและระดับสีของอุณหภูมิ](images/mapscreen.png)
+
 
 InfoWindowข้อมูลสภาพอากาศ
 ![Infowindowข้อมูลสภาพอากาศ](images/infoscreen.png)
 
+
 รายละเอียดสภาพอากาศ
 ![รายละเอียดสภาพอากาศ](images/datascreen.png)
+
+วิธีติดตั้ง:
+ใช้ Docker Compose ติดตั้ง 4 Container ดังนี้
+- config-service: เก็บ API KEY 
+- flask-api-service: ให้บริการ API ของทั้งระบบ
+- react-front-app: Application
+- db: ฐานข้อมูล PostgreSQL
+
+พิมพ์คำสั่ง docker-compose build
+ระบบจะทำการ ติดตั้ง Dockerfiles ของแต่ละ container ให้อัตโนมัติ
 
 พัฒนาโดย  
     นายณัชพล เกิดชนะ นักศึกษาระดับปริญญาโท สาขาวิศวกรรมคอมพิวเตอร์  
