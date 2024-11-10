@@ -86,47 +86,47 @@ const GoogleMapComponent = ({ markers, center }) => {
       const infowindow = new window.google.maps.InfoWindow({
         content: `
           <div style="font-family: Arial, sans-serif; color: #333; padding: 5px; background-color: #fefefe; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); width: 100%; overflow: hidden; box-sizing: border-box;">
-        
+          
             <strong style="font-size: 18px; color: #2c3e50; font-weight: bold; margin-bottom: 10px; display: block;">${marker.province}</strong>
             
             <!-- แสดงไอคอนและข้อความ -->
             <div style="display: flex; align-items: center; margin-bottom: 10px;">
               <img src="${marker.condition ? marker.condition.icon : ''}" alt="${marker.condition ? marker.condition.text : 'No icon'}" style="width: 40px; height: auto; margin-right: 10px;"/>
-              <span style="font-size: 16px; color: #333;">${marker.condition ? marker.condition.text : 'No condition available'}</span>
+              <span style="font-size: 16px; color: #333; font-weight: bold;">${marker.condition ? marker.condition.text : 'No condition available'}</span>
             </div>
-      
+        
             <hr style="border: 1px solid #ddd; margin: 5px 0;"/>
             
             <!-- ตารางข้อมูล -->
             <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0; padding: 0;">
               <tbody>
                 <tr>
-                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForTemperature(marker.temperature)};">
+                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForTemperature(marker.temperature)}; font-weight: bold;">
                     Temp: ${marker.temperature !== null ? marker.temperature.toFixed(1) + ' °C' : 'N/A'}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForHumidity(marker.humidity)};">
+                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForHumidity(marker.humidity)}; font-weight: bold;">
                     Humidity: ${marker.humidity !== null ? `${marker.humidity} %` : 'N/A'}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForCloudCover(marker.cloud)};">
+                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForCloudCover(marker.cloud)}; font-weight: bold;">
                     Cloud: ${marker.cloud !== null ? `${marker.cloud} %` : 'N/A'}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForGust(marker.gust_kph)};">
+                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForGust(marker.gust_kph)}; font-weight: bold;">
                     Gust: ${marker.gust_kph !== null ? `${marker.gust_kph} km/h` : 'N/A'}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForUV(marker.uv)};">
+                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForUV(marker.uv)}; font-weight: bold;">
                     UV: ${marker.uv !== null ? `${marker.uv}` : 'N/A'}
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForPM25(marker.pm25)};">
+                  <td style="padding: 5px; border: 1px solid #ddd; color: ${getColorForPM25(marker.pm25)}; font-weight: bold;">
                     PM2.5: ${marker.pm25 !== null ? `${marker.pm25} µg/m³` : 'N/A'}
                   </td>
                 </tr>
@@ -135,6 +135,7 @@ const GoogleMapComponent = ({ markers, center }) => {
           </div>
         `,
       });
+      
       
       
 
