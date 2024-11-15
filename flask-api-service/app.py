@@ -143,7 +143,7 @@ def store_weather_data():
 
     # ตรวจสอบข้อมูลที่มีในฐานข้อมูลภายใน 3 นาทีที่ผ่านมา
     select_query = '''
-        SELECT * FROM weather_data
+        SELECT * FROM nk_weather_data
         WHERE location_name = %s
         AND temperature = %s
         AND humidity = %s
@@ -167,7 +167,7 @@ def store_weather_data():
 
     # ถ้าไม่มีข้อมูล ก็ทำการบันทึกข้อมูลใหม่
     insert_query = '''
-        INSERT INTO weather_data (location_name, temperature, humidity, cloud, gust_kph, uv, condition, pm25)
+        INSERT INTO nk_weather_data (location_name, temperature, humidity, cloud, gust_kph, uv, condition, pm25)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     '''
     cursor.execute(insert_query, (province, temperature, humidity, cloud, gust_kph, uv, condition, pm25))

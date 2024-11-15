@@ -1,5 +1,5 @@
 -- init.sql
-CREATE TABLE weather_data (
+CREATE TABLE nk_weather_data (
     id SERIAL PRIMARY KEY,
     location_name VARCHAR(255) NOT NULL,
     temperature DECIMAL(5, 2),
