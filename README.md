@@ -57,6 +57,7 @@ React อาจจะใช้การแสดงข้อมูลแบบ r
 
 
 ไฟล์ init.sql
+
 CREATE TABLE nk_weather_data (
     id SERIAL PRIMARY KEY,
     location_name VARCHAR(255) NOT NULL,
@@ -69,6 +70,7 @@ CREATE TABLE nk_weather_data (
     pm25 DECIMAL(5, 2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
 
 
 ไฟล์ .env สำหรับ API_Key และ Database User
