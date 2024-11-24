@@ -56,7 +56,8 @@ React อาจจะใช้การแสดงข้อมูลแบบ r
 - db: ฐานข้อมูล PostgreSQL
 
 
-```ไฟล์ init.sql สำหรับ สร้างฐานข้อมูล
+```
+ไฟล์ init.sql สำหรับ สร้างฐานข้อมูล
 CREATE TABLE nk_weather_data (
     id SERIAL PRIMARY KEY,
     location_name VARCHAR(255) NOT NULL,
@@ -78,7 +79,7 @@ DB_HOST=db
 DB_NAME=66130520
 DB_USER=postgresql
 DB_PASSWORD=12345678
-
+```
 
 พิมพ์คำสั่ง docker-compose build
 ระบบจะทำการ ติดตั้ง Dockerfiles ของแต่ละ container ให้อัตโนมัติ
