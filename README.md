@@ -56,8 +56,8 @@ React อาจจะใช้การแสดงข้อมูลแบบ r
 - db: ฐานข้อมูล PostgreSQL
 
 
-```
 ไฟล์ init.sql สำหรับ สร้างฐานข้อมูล
+```
 CREATE TABLE nk_weather_data (
     id SERIAL PRIMARY KEY,
     location_name VARCHAR(255) NOT NULL,
@@ -70,9 +70,10 @@ CREATE TABLE nk_weather_data (
     pm25 DECIMAL(5, 2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
+```
 
 ไฟล์ .env สำหรับ API_Key และ Database User
+```
 WEATHER_API_KEY=
 GOOGLE_API_KEY=
 DB_HOST=db
