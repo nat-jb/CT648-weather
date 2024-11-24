@@ -73,6 +73,7 @@ CREATE TABLE nk_weather_data (
 
 
 
+
 ไฟล์ .env สำหรับ API_Key และ Database User
 WEATHER_API_KEY=
 GOOGLE_API_KEY=
