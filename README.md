@@ -55,6 +55,31 @@ React อาจจะใช้การแสดงข้อมูลแบบ r
 - react-front-app: Application
 - db: ฐานข้อมูล PostgreSQL
 
+
+ไฟล์ init.sql
+CREATE TABLE nk_weather_data (
+    id SERIAL PRIMARY KEY,
+    location_name VARCHAR(255) NOT NULL,
+    temperature DECIMAL(5, 2),
+    humidity DECIMAL(5, 2),
+    cloud DECIMAL(5, 2),
+    gust_kph DECIMAL(5, 2),
+    uv DECIMAL(5, 2),
+    condition VARCHAR(200),
+    pm25 DECIMAL(5, 2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ไฟล์ .env สำหรับ API_Key และ Database User
+WEATHER_API_KEY=
+GOOGLE_API_KEY=
+DB_HOST=db
+DB_NAME=66130520
+DB_USER=postgresql
+DB_PASSWORD=12345678
+
+
 พิมพ์คำสั่ง docker-compose build
 ระบบจะทำการ ติดตั้ง Dockerfiles ของแต่ละ container ให้อัตโนมัติ
 

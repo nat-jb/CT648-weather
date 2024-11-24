@@ -8,7 +8,7 @@ CORS(app)
 
 # URL ของ server.js ที่เราสร้าง API ไว้สำหรับดึง API Key
 CONFIG_SERVICE_URL = "http://localhost:5001/api/config"  # เปลี่ยนพอร์ตตามที่ server.js ใช้
-
+#CONFIG_SERVICE_URL = "http://config-service:5001/api/config" #ใน docker ใช้ ชื่อ container (ภายใน)
 def get_config():
     try:
         # เรียก API ที่ server.js เพื่อดึงข้อมูลการตั้งค่าทั้งหมด
